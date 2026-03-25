@@ -3,6 +3,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,6 +37,16 @@ type Config struct {
 // Load parses the TOML file at path and applies defaults.
 // Returns defaults if the file does not exist.
 func Load(path string) (*Config, error) {
+	return load(path, false)
+}
+
+// LoadRequired parses the TOML file at path and returns an error if the file
+// does not exist. Use this when the path was explicitly provided by the user.
+func LoadRequired(path string) (*Config, error) {
+	return load(path, true)
+}
+
+func load(path string, required bool) (*Config, error) {
 	cfg := &Config{}
 	cfg.Defaults.Delay = 3
 	cfg.Defaults.Enabled = true
@@ -43,7 +54,7 @@ func Load(path string) (*Config, error) {
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if !required && errors.Is(err, os.ErrNotExist) {
 			return cfg, nil
 		}
 		return nil, err
@@ -55,6 +66,16 @@ func Load(path string) (*Config, error) {
 
 	// Apply tilde expansion to paths
 	cfg.Defaults.LogFile = ExpandTilde(cfg.Defaults.LogFile)
+
+	// Validate delay values
+	if cfg.Defaults.Delay < 0 {
+		return nil, fmt.Errorf("defaults.delay must be >= 0, got %d", cfg.Defaults.Delay)
+	}
+	for name, agent := range cfg.Agents {
+		if agent.Delay != nil && *agent.Delay < 0 {
+			return nil, fmt.Errorf("agents.%s.delay must be >= 0, got %d", name, *agent.Delay)
+		}
+	}
 
 	return cfg, nil
 }

@@ -129,8 +129,28 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Load config (expand tilde in --config flag value)
-	cfg, err := config.Load(config.ExpandTilde(*cfgPath))
+	// Validate -delay: only -1 (use config) or >= 0 are valid
+	if *delay < -1 {
+		fmt.Fprintf(os.Stderr, "invalid -delay value %d: must be 0 or greater (use -1 to read from config)\n", *delay)
+		os.Exit(2)
+	}
+
+	// Load config — error if the user explicitly provided a path that doesn't exist
+	var cfgExplicit bool
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "config" {
+			cfgExplicit = true
+		}
+	})
+	var (
+		cfg *config.Config
+		err error
+	)
+	if cfgExplicit {
+		cfg, err = config.LoadRequired(config.ExpandTilde(*cfgPath))
+	} else {
+		cfg, err = config.Load(config.ExpandTilde(*cfgPath))
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "config error:", err)
 		os.Exit(1)

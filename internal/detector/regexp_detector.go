@@ -14,6 +14,9 @@ type RegexpDetector struct {
 }
 
 func NewRegexpDetector(name, pattern, response string) (*RegexpDetector, error) {
+	if response == "" {
+		return nil, fmt.Errorf("response must not be empty")
+	}
 	re, err := regexp.Compile(pattern)
 	if err != nil {
 		return nil, fmt.Errorf("invalid pattern %q: %w", pattern, err)

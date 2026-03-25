@@ -8,12 +8,63 @@ confirmation keystroke after a configurable delay — so you don't have to babys
 
 ---
 
+## Installation
+
+### Option 1 — go install (recommended if you have Go)
+
+```bash
+go install github.com/host452b/yoyo/cmd/yoyo@latest
+```
+
+Requires Go 1.21+. The binary is placed in `$GOPATH/bin` (typically `~/go/bin`).
+Make sure that directory is in your `PATH`:
+
+```bash
+# add to ~/.bashrc or ~/.zshrc
+export PATH="$HOME/go/bin:$PATH"
+```
+
+### Option 2 — pre-built binary
+
+Download the latest binary for your platform from the [Releases page](https://github.com/host452b/yoyo/releases), then make it executable and move it onto your PATH:
+
+```bash
+# Linux (amd64)
+curl -L https://github.com/host452b/yoyo/releases/latest/download/yoyo-linux-amd64 -o yoyo
+chmod +x yoyo
+sudo mv yoyo /usr/local/bin/
+
+# macOS (Apple Silicon)
+curl -L https://github.com/host452b/yoyo/releases/latest/download/yoyo-darwin-arm64 -o yoyo
+chmod +x yoyo
+sudo mv yoyo /usr/local/bin/
+
+# macOS (Intel)
+curl -L https://github.com/host452b/yoyo/releases/latest/download/yoyo-darwin-amd64 -o yoyo
+chmod +x yoyo
+sudo mv yoyo /usr/local/bin/
+```
+
+### Option 3 — build from source
+
+```bash
+git clone https://github.com/host452b/yoyo.git
+cd yoyo
+go build -o yoyo ./cmd/yoyo
+sudo mv yoyo /usr/local/bin/   # or any directory in $PATH
+```
+
+### Verify installation
+
+```bash
+yoyo -h
+```
+
+---
+
 ## Quick Start
 
 ```bash
-# Install
-go install github.com/host452b/yoyo/cmd/yoyo@latest
-
 # Wrap claude with default settings (3-second delay before auto-approve)
 yoyo claude
 
@@ -164,16 +215,15 @@ yoyo remembers every prompt it has approved within the current session (keyed by
 
 ---
 
-## Building from Source
+## Platform Support
 
-```bash
-git clone https://github.com/host452b/yoyo.git
-cd yoyo
-go build ./cmd/yoyo
-./yoyo -h
-```
+| Platform | Status |
+|----------|--------|
+| Linux | Fully supported |
+| macOS | Fully supported |
+| Windows | Builds and runs; PTY resize is a no-op |
 
-Requirements: Go 1.21+, Linux/macOS (Windows: no-op PTY resize).
+Requirements: Go 1.21+ to build from source.
 
 ---
 
