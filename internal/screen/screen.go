@@ -15,7 +15,9 @@ func New(cols, rows int) *Screen {
 }
 
 // Feed writes raw PTY data into the terminal emulator.
+// Recovers from panics in the vt10x library (e.g. cursor out-of-bounds).
 func (s *Screen) Feed(data []byte) {
+	defer func() { recover() }()
 	s.terminal.Write(data)
 }
 
