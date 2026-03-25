@@ -22,9 +22,102 @@ import (
 	"yoyo/internal/term"
 )
 
+const usageText = `yoyo — you only yes once. A PTY proxy that auto-approves AI agent permission prompts.
+
+USAGE
+  yoyo [flags] <command> [args...]
+
+DESCRIPTION
+  yoyo wraps any AI agent CLI (claude, codex, cursor, …) in a PTY proxy.
+  It watches the agent's output, detects permission/approval prompts, and
+  automatically sends the confirmation keystroke after a configurable delay.
+
+  A status bar is rendered in the bottom-right corner of the terminal:
+    [yoyo: on 3s]           — enabled, 3-second delay before auto-approve
+    [yoyo: on 3s | Claude]  — a prompt was detected (rule name shown)
+    [yoyo: on 0s | seen: X] — prompt already approved this session, sent immediately
+    [yoyo: off]             — auto-approve disabled (manual mode)
+
+SUPPORTED AGENTS
+  claude        Claude Code CLI  (detects ─── bordered permission prompts)
+  codex         OpenAI Codex CLI (detects "Would you like to" / "needs your approval")
+  cursor        Cursor agent     (detects box-drawn ┌─┐ prompts with y/n options)
+  <any command> Unknown agents are auto-detected from screen content within the
+                first 10 output frames; all built-in detectors run in parallel.
+
+FLAGS
+  -delay int
+        Seconds to wait before auto-approving a detected prompt.
+        0 = approve immediately (no countdown).
+        -1 = use value from config file (default: 3).
+        Explicit -delay always takes priority over per-agent config.
+
+  -config string
+        Path to TOML config file. Supports ~/. (default: ~/.config/yoyo/config.toml)
+
+  -log string
+        Path to log file. Supports ~/. (default: ~/.yoyo/yoyo.log)
+
+RUNTIME CONTROLS  (Ctrl+Y is the prefix key)
+  Ctrl+Y  0     Toggle auto-approve on/off
+  Ctrl+Y  1     Set delay to 1 second  (enables if currently off)
+  Ctrl+Y  2     Set delay to 2 seconds (enables if currently off)
+  Ctrl+Y  3     Set delay to 3 seconds (enables if currently off)
+  Ctrl+Y  4     Set delay to 4 seconds (enables if currently off)
+  Ctrl+Y  5     Set delay to 5 seconds (enables if currently off)
+
+  Pressing any non-escape key while the countdown is running cancels
+  the pending approval, letting you inspect or respond manually.
+
+CONFIG FILE  (~/.config/yoyo/config.toml)
+  [defaults]
+  delay    = 3       # default approval delay in seconds
+  enabled  = true    # start with auto-approve on
+  log_file = "~/.yoyo/yoyo.log"
+
+  # Per-agent overrides (keys: "claude", "codex", "cursor")
+  [agents.claude]
+  delay = 0          # approve Claude prompts immediately
+
+  # Global custom rules (checked before built-in detectors)
+  [[rules]]
+  name     = "my-tool"
+  pattern  = "Continue\\? \\[y/N\\]"   # Go regexp matched against screen text
+  response = "y\r"                      # keystrokes to send on match
+
+  # Agent-specific custom rules (checked first, before global rules)
+  [[agents.claude.rules]]
+  name     = "custom-confirm"
+  pattern  = "Are you sure"
+  response = "y\r"
+
+EXAMPLES
+  # Wrap claude with default settings (3-second delay)
+  yoyo claude
+
+  # Wrap claude, approve immediately
+  yoyo -delay 0 claude
+
+  # Wrap codex with a 5-second review window
+  yoyo -delay 5 codex
+
+  # Wrap an unknown tool (auto-detected from screen)
+  yoyo -delay 2 my-ai-agent --some-flag
+
+  # Use a custom config file
+  yoyo -config ~/work/yoyo.toml claude
+
+EXIT BEHAVIOR
+  yoyo exits when the child process exits.
+  Signals (SIGINT, SIGTERM, SIGHUP, SIGQUIT) restore the terminal and exit cleanly.
+  The terminal is always restored even if yoyo crashes internally.
+`
+
 func main() {
+	flag.Usage = func() { fmt.Fprint(os.Stderr, usageText) }
+
 	var (
-		delay   = flag.Int("delay", -1, "approval delay in seconds (0=immediate, default from config)")
+		delay   = flag.Int("delay", -1, "approval delay in seconds (0=immediate, -1=from config)")
 		logPath = flag.String("log", "", "log file path (default from config)")
 		cfgPath = flag.String("config", config.DefaultPath(), "config file path")
 	)
@@ -32,7 +125,7 @@ func main() {
 
 	args := flag.Args()
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: yoyo [flags] <command> [args...]")
+		fmt.Fprint(os.Stderr, usageText)
 		os.Exit(1)
 	}
 
