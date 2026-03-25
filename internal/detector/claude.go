@@ -77,12 +77,6 @@ func findClaudeBottom(lines []string) (int, bool) {
 		if len(t) >= 4 && t[0] >= '1' && t[0] <= '9' && strings.HasPrefix(t[1:], ". No") {
 			return i, true
 		}
-		if len(t) >= 4 && t[0] >= '1' && t[0] <= '9' {
-			after := strings.TrimLeft(t[1:], " \t")
-			if strings.HasPrefix(after, ". No") {
-				return i, true
-			}
-		}
 	}
 	return -1, false
 }

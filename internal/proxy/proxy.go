@@ -189,22 +189,27 @@ func (p *Proxy) Run() error {
 
 			if enabled {
 				result := chain.Detect(text)
-				if result != nil && !cfg.Memory.Seen(result.Hash) {
-					if cfg.Log != nil {
-						cfg.Log.Infof("prompt detected: %s", result.RuleName)
-					}
-					cfg.StatusBar.SetRule(result.RuleName)
-					if delaySecs == 0 {
-						cfg.Memory.Record(result.Hash)
+				if result != nil {
+					if cfg.Memory.Seen(result.Hash) {
+						cfg.StatusBar.SetRule("seen: " + result.RuleName)
 						cfg.PTY.Write([]byte(result.Response))
-					} else if lastResult == nil || lastResult.Hash != result.Hash {
-						// New or changed prompt: (re)start timer
-						if approvalTimer != nil {
-							approvalTimer.Stop()
+					} else {
+						if cfg.Log != nil {
+							cfg.Log.Infof("prompt detected: %s", result.RuleName)
 						}
-						lastResult = result
-						approvalTimer = time.NewTimer(time.Duration(delaySecs) * time.Second)
-						timerCh = approvalTimer.C
+						cfg.StatusBar.SetRule(result.RuleName)
+						if delaySecs == 0 {
+							cfg.Memory.Record(result.Hash)
+							cfg.PTY.Write([]byte(result.Response))
+						} else if lastResult == nil || lastResult.Hash != result.Hash {
+							// New or changed prompt: (re)start timer
+							if approvalTimer != nil {
+								approvalTimer.Stop()
+							}
+							lastResult = result
+							approvalTimer = time.NewTimer(time.Duration(delaySecs) * time.Second)
+							timerCh = approvalTimer.C
+						}
 					}
 				}
 			}
