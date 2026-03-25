@@ -4,13 +4,14 @@ package logger
 import (
 	"fmt"
 	"os"
+	"sync"
 	"time"
 )
 
 type Logger struct {
-	ch       chan string
-	done     chan struct{}
-	closeOnce bool
+	ch        chan string
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
 // New opens the log file and starts the background write goroutine.
@@ -59,10 +60,8 @@ func (l *Logger) log(level, format string, args ...any) {
 // Close flushes all pending log entries and closes the file.
 // Safe to call multiple times.
 func (l *Logger) Close() {
-	if l.closeOnce {
-		return
-	}
-	l.closeOnce = true
-	close(l.ch)
-	<-l.done
+	l.closeOnce.Do(func() {
+		close(l.ch)
+		<-l.done
+	})
 }
