@@ -11,15 +11,15 @@ import (
 
 	ptylib "github.com/aymanbagabas/go-pty"
 
-	"yoyo/internal/agent"
-	"yoyo/internal/config"
-	"yoyo/internal/detector"
-	"yoyo/internal/logger"
-	"yoyo/internal/memory"
-	"yoyo/internal/proxy"
-	"yoyo/internal/screen"
-	"yoyo/internal/statusbar"
-	"yoyo/internal/term"
+	"github.com/host452b/yoyo/internal/agent"
+	"github.com/host452b/yoyo/internal/config"
+	"github.com/host452b/yoyo/internal/detector"
+	"github.com/host452b/yoyo/internal/logger"
+	"github.com/host452b/yoyo/internal/memory"
+	"github.com/host452b/yoyo/internal/proxy"
+	"github.com/host452b/yoyo/internal/screen"
+	"github.com/host452b/yoyo/internal/statusbar"
+	"github.com/host452b/yoyo/internal/term"
 )
 
 const usageText = `yoyo — you only yes once. A PTY proxy that auto-approves AI agent permission prompts.
@@ -150,10 +150,11 @@ func main() {
 	// Identify agent kind
 	kind := agent.KindFromCommand(args[0])
 
-	// Apply agent-specific delay override only when --delay was not explicitly provided
+	// Apply agent-specific delay override only when --delay was not explicitly provided.
+	// Delay is a pointer: nil means "inherit from defaults", non-nil means explicitly set.
 	if !delayFromFlag {
-		if agentCfg, ok := cfg.Agents[kind.String()]; ok && agentCfg.Delay >= 0 {
-			effectiveDelay = agentCfg.Delay
+		if agentCfg, ok := cfg.Agents[kind.String()]; ok && agentCfg.Delay != nil {
+			effectiveDelay = *agentCfg.Delay
 		}
 	}
 

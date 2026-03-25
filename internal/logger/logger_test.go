@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"yoyo/internal/logger"
+	"github.com/host452b/yoyo/internal/logger"
 )
 
 func TestLogger_WritesToFile(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"yoyo/internal/detector"
+	"github.com/host452b/yoyo/internal/detector"
 )
 
 // Kind identifies the type of AI agent CLI being proxied.
@@ -60,9 +60,9 @@ func KindFromScreen(screenText string) Kind {
 	switch {
 	case strings.Contains(screenText, "Claude Code"):
 		return KindClaude
-	case strings.Contains(screenText, "codex") || strings.Contains(screenText, "Codex"):
+	case strings.Contains(screenText, "Codex CLI") || strings.Contains(screenText, "codex@"):
 		return KindCodex
-	case strings.Contains(screenText, "cursor") || strings.Contains(screenText, "Cursor"):
+	case strings.Contains(screenText, "Cursor Agent") || strings.Contains(screenText, "cursor-agent"):
 		return KindCursor
 	default:
 		return KindUnknown

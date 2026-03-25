@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"yoyo/internal/statusbar"
+	"github.com/host452b/yoyo/internal/statusbar"
 )
 
 func TestStatusBar_PaintsLabel(t *testing.T) {

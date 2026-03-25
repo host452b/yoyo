@@ -12,7 +12,7 @@ confirmation keystroke after a configurable delay — so you don't have to babys
 
 ```bash
 # Install
-go install yoyo/cmd/yoyo@latest
+go install github.com/host452b/yoyo/cmd/yoyo@latest
 
 # Wrap claude with default settings (3-second delay before auto-approve)
 yoyo claude
@@ -174,6 +174,22 @@ go build ./cmd/yoyo
 ```
 
 Requirements: Go 1.21+, Linux/macOS (Windows: no-op PTY resize).
+
+---
+
+## Security
+
+### Prompt injection
+
+yoyo auto-approves prompts that match its detector rules. A malicious program or file processed by the wrapped agent could deliberately emit output that looks like a permission prompt, causing yoyo to approve an action you did not intend.
+
+**Mitigations:**
+
+- Use the `-delay` option to give yourself time to review before approval is sent. The default is 3 seconds; press any key to cancel.
+- Disable yoyo (`Ctrl+Y 0`) when the agent is about to process untrusted input.
+- Keep custom `pattern` rules in your config as specific as possible — overly broad patterns increase the injection surface.
+
+yoyo is designed for development workflows where you trust the agent and its environment. It is not designed to be safe in adversarial environments.
 
 ---
 

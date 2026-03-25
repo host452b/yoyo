@@ -11,14 +11,14 @@ import (
 	"testing"
 	"time"
 
-	"yoyo/internal/agent"
-	"yoyo/internal/detector"
-	"yoyo/internal/logger"
-	"yoyo/internal/memory"
-	"yoyo/internal/proxy"
-	"yoyo/internal/screen"
-	"yoyo/internal/statusbar"
-	"yoyo/internal/term"
+	"github.com/host452b/yoyo/internal/agent"
+	"github.com/host452b/yoyo/internal/detector"
+	"github.com/host452b/yoyo/internal/logger"
+	"github.com/host452b/yoyo/internal/memory"
+	"github.com/host452b/yoyo/internal/proxy"
+	"github.com/host452b/yoyo/internal/screen"
+	"github.com/host452b/yoyo/internal/statusbar"
+	"github.com/host452b/yoyo/internal/term"
 )
 
 // ── test doubles ────────────────────────────────────────────────────────────

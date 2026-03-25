@@ -1,0 +1,29 @@
+[package]
+name = "auto-approve-agent"
+version = "0.0.8"
+edition = "2021"
+description = "PTY proxy that auto-approves Claude Code and Codex CLI permission prompts"
+
+[[bin]]
+name = "aaa"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+vt100 = "0.16"
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31", features = ["term", "process", "poll", "signal", "ioctl"] }
+signal-hook = "0.4"
+
+[target.'cfg(windows)'.dependencies]
+conpty = "0.7"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Console", "Win32_Storage_FileSystem"] }
+
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true
+codegen-units = 1

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"yoyo/internal/config"
+	"github.com/host452b/yoyo/internal/config"
 )
 
 func writeConfig(t *testing.T, content string) string {
@@ -43,8 +43,28 @@ delay = 1
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Agents["claude"].Delay != 1 {
-		t.Errorf("claude delay = %d, want 1", cfg.Agents["claude"].Delay)
+	agentDelay := cfg.Agents["claude"].Delay
+	if agentDelay == nil || *agentDelay != 1 {
+		var got interface{} = "<nil>"
+		if agentDelay != nil {
+			got = *agentDelay
+		}
+		t.Errorf("claude delay = %v, want 1", got)
+	}
+}
+
+func TestLoad_AgentDelayInheritsDefault(t *testing.T) {
+	// Agent section without delay field must NOT override global default.
+	path := writeConfig(t, `
+[agents.claude]
+# no delay set — should inherit defaults.delay
+`)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Agents["claude"].Delay != nil {
+		t.Errorf("claude delay should be nil (inherit default), got %d", *cfg.Agents["claude"].Delay)
 	}
 }
 

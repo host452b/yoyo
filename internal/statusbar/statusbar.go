@@ -1,7 +1,10 @@
 // internal/statusbar/statusbar.go
 package statusbar
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+)
 
 const (
 	cursorSave    = "\x1b[s"
@@ -17,7 +20,9 @@ const (
 const minLabelWidth = 22 // " [yoyo: on Xs | ...]  " minimum
 
 // StatusBar renders a bottom-right ANSI overlay around PTY output frames.
+// All methods are goroutine-safe (SIGWINCH resize races with event loop writes).
 type StatusBar struct {
+	mu        sync.Mutex
 	rows      uint16
 	cols      uint16
 	enabled   bool
@@ -37,22 +42,38 @@ func New(rows, cols uint16, enabled bool, delaySecs int) *StatusBar {
 	}
 }
 
-func (sb *StatusBar) Toggle() { sb.enabled = !sb.enabled }
+func (sb *StatusBar) Toggle() {
+	sb.mu.Lock()
+	sb.enabled = !sb.enabled
+	sb.mu.Unlock()
+}
 
-func (sb *StatusBar) SetDelay(secs int) { sb.delaySecs = secs }
+func (sb *StatusBar) SetDelay(secs int) {
+	sb.mu.Lock()
+	sb.delaySecs = secs
+	sb.mu.Unlock()
+}
 
 // SetRule sets the last-matched rule name shown in the label.
-func (sb *StatusBar) SetRule(rule string) { sb.rule = rule }
+func (sb *StatusBar) SetRule(rule string) {
+	sb.mu.Lock()
+	sb.rule = rule
+	sb.mu.Unlock()
+}
 
 // Resize updates terminal dimensions.
 func (sb *StatusBar) Resize(rows, cols uint16) {
+	sb.mu.Lock()
 	sb.rows = rows
 	sb.cols = cols
+	sb.mu.Unlock()
 }
 
 // WrapFrame injects clear-previous and paint-new ANSI sequences around frame.
 // Returns a single buffer for one atomic write to stdout.
 func (sb *StatusBar) WrapFrame(frame []byte) []byte {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
 	prevMid := sb.midSeq
 	sb.midSeq = endsMidEscape(frame) || endsMidUTF8(frame)
 

@@ -2,19 +2,21 @@
 package proxy_test
 
 import (
+	"io"
+	"strings"
 	"testing"
 	"time"
 
 	ptylib "github.com/aymanbagabas/go-pty"
 
-	"yoyo/internal/agent"
-	"yoyo/internal/detector"
-	"yoyo/internal/logger"
-	"yoyo/internal/memory"
-	"yoyo/internal/proxy"
-	"yoyo/internal/screen"
-	"yoyo/internal/statusbar"
-	"yoyo/internal/term"
+	"github.com/host452b/yoyo/internal/agent"
+	"github.com/host452b/yoyo/internal/detector"
+	"github.com/host452b/yoyo/internal/logger"
+	"github.com/host452b/yoyo/internal/memory"
+	"github.com/host452b/yoyo/internal/proxy"
+	"github.com/host452b/yoyo/internal/screen"
+	"github.com/host452b/yoyo/internal/statusbar"
+	"github.com/host452b/yoyo/internal/term"
 )
 
 // TestProxy_AutoApprovesClaudePrompt runs a real PTY with `cat`, writes a
@@ -39,6 +41,10 @@ func TestProxy_AutoApprovesClaudePrompt(t *testing.T) {
 	log, _ := logger.New(t.TempDir() + "/test.log")
 	defer log.Close()
 
+	// Use a pipe for stdin so the proxy doesn't exit when os.Stdin reaches EOF.
+	stdinR, stdinW := io.Pipe()
+	defer stdinW.Close()
+
 	scr := screen.New(80, 24)
 	sb := statusbar.New(24, 80, true, 0) // delay=0 immediate
 	mem := memory.New()
@@ -47,6 +53,7 @@ func TestProxy_AutoApprovesClaudePrompt(t *testing.T) {
 
 	pr := proxy.New(proxy.Config{
 		PTY:       p,
+		Stdin:     stdinR,
 		RuleChain: chain,
 		Memory:    mem,
 		StatusBar: sb,
@@ -82,13 +89,16 @@ func TestProxy_AutoApprovesClaudePrompt(t *testing.T) {
 		}
 	}
 
-	// Verify memory recorded the prompt hash
-	scr.Feed([]byte(claudePrompt))
-	r := detector.Claude{}.Detect(scr.Text())
+	// Verify memory recorded the prompt hash.
+	// Use a fresh screen fed with the CRLF version (PTY ONLCR converts \n→\r\n)
+	// so the hash matches what the proxy computed from actual PTY output.
+	freshScr := screen.New(80, 24)
+	freshScr.Feed([]byte(strings.ReplaceAll(claudePrompt, "\n", "\r\n")))
+	r := detector.Claude{}.Detect(freshScr.Text())
 	if r == nil {
 		t.Fatal("detector failed to match the injected prompt")
 	}
 	if !mem.Seen(r.Hash) {
-		t.Log("note: prompt may not have been seen if proxy stopped before detection")
+		t.Error("proxy did not record the prompt hash — approval response was not sent")
 	}
 }

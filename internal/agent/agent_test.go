@@ -4,8 +4,8 @@ package agent_test
 import (
 	"testing"
 
-	"yoyo/internal/agent"
-	"yoyo/internal/detector"
+	"github.com/host452b/yoyo/internal/agent"
+	"github.com/host452b/yoyo/internal/detector"
 )
 
 func TestKindFromCommand(t *testing.T) {
@@ -37,9 +37,11 @@ func TestKindFromScreen(t *testing.T) {
 		want agent.Kind
 	}{
 		{"Welcome to Claude Code", agent.KindClaude},
-		{"codex v1.0", agent.KindCodex},
+		{"Codex CLI v1.0", agent.KindCodex},
 		{"Codex CLI", agent.KindCodex},
-		{"cursor running", agent.KindCursor},
+		{"codex@0.1.0", agent.KindCodex},
+		{"Cursor Agent ready", agent.KindCursor},
+		{"cursor-agent running", agent.KindCursor},
 		{"something else", agent.KindUnknown},
 	}
 	for _, tc := range tests {

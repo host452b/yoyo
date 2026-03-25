@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"yoyo/internal/term"
+	"github.com/host452b/yoyo/internal/term"
 )
 
 func TestTerm_NewDoesNotPanic(t *testing.T) {

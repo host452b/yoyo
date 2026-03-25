@@ -5,15 +5,16 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
+	"sync"
 	"time"
 
-	"yoyo/internal/agent"
-	"yoyo/internal/detector"
-	"yoyo/internal/logger"
-	"yoyo/internal/memory"
-	"yoyo/internal/screen"
-	"yoyo/internal/statusbar"
-	"yoyo/internal/term"
+	"github.com/host452b/yoyo/internal/agent"
+	"github.com/host452b/yoyo/internal/detector"
+	"github.com/host452b/yoyo/internal/logger"
+	"github.com/host452b/yoyo/internal/memory"
+	"github.com/host452b/yoyo/internal/screen"
+	"github.com/host452b/yoyo/internal/statusbar"
+	"github.com/host452b/yoyo/internal/term"
 )
 
 const (
@@ -79,6 +80,8 @@ func (p *Proxy) Run() error {
 	inputCh := make(chan []byte, 32)
 	outputCh := make(chan []byte, 32)
 	done := make(chan struct{})
+	var closeOnce sync.Once
+	closeDone := func() { closeOnce.Do(func() { close(done) }) }
 
 	// stdin → inputCh
 	safeGo(cfg.Term, cfg.Log, func() {
@@ -148,7 +151,7 @@ func (p *Proxy) Run() error {
 				if prefixTimer != nil {
 					prefixTimer.Stop()
 				}
-				close(done)
+				closeDone()
 				return nil
 			}
 			data = p.handlePrefix(data, &prefixActive, &prefixTimer, &prefixTimerCh,
@@ -178,7 +181,7 @@ func (p *Proxy) Run() error {
 				if prefixTimer != nil {
 					prefixTimer.Stop()
 				}
-				close(done)
+				closeDone()
 				return nil
 			}
 
@@ -204,7 +207,9 @@ func (p *Proxy) Run() error {
 				if result != nil {
 					if cfg.Memory.Seen(result.Hash) {
 						cfg.StatusBar.SetRule("seen: " + result.RuleName)
-						cfg.PTY.Write([]byte(result.Response))
+						if _, err := cfg.PTY.Write([]byte(result.Response)); err != nil && cfg.Log != nil {
+							cfg.Log.Errorf("failed to send seen-approval response: %v", err)
+						}
 					} else {
 						if cfg.Log != nil {
 							cfg.Log.Infof("prompt detected: %s", result.RuleName)
@@ -212,7 +217,9 @@ func (p *Proxy) Run() error {
 						cfg.StatusBar.SetRule(result.RuleName)
 						if delaySecs == 0 {
 							cfg.Memory.Record(result.Hash)
-							cfg.PTY.Write([]byte(result.Response))
+							if _, err := cfg.PTY.Write([]byte(result.Response)); err != nil && cfg.Log != nil {
+								cfg.Log.Errorf("failed to send immediate-approval response: %v", err)
+							}
 						} else if lastResult == nil || lastResult.Hash != result.Hash {
 							// New or changed prompt: (re)start timer
 							if approvalTimer != nil {
@@ -237,7 +244,9 @@ func (p *Proxy) Run() error {
 					cfg.Log.Infof("approval timer fired, sending response for: %s", lastResult.RuleName)
 				}
 				cfg.Memory.Record(lastResult.Hash)
-				cfg.PTY.Write([]byte(lastResult.Response))
+				if _, err := cfg.PTY.Write([]byte(lastResult.Response)); err != nil && cfg.Log != nil {
+					cfg.Log.Errorf("failed to send delayed-approval response: %v", err)
+				}
 				lastResult = nil
 			}
 
@@ -322,23 +331,14 @@ func (p *Proxy) handlePrefix(
 	return data
 }
 
-// isEscapeSequence returns true if data is a terminal-generated escape
-// sequence (focus events, cursor position reports) rather than user input.
+// isEscapeSequence returns true if data is a complete CSI escape sequence
+// (terminal-generated: arrow keys, function keys, focus events, cursor reports,
+// mouse events, bracketed paste markers, etc.) rather than intentional user input.
+// Any complete CSI sequence starts with ESC [ and ends with a byte in 0x40–0x7E.
 func isEscapeSequence(data []byte) bool {
 	if len(data) < 3 || data[0] != 0x1b || data[1] != '[' {
 		return false
 	}
-	if len(data) == 3 && (data[2] == 'I' || data[2] == 'O') {
-		return true
-	}
-	if data[len(data)-1] == 'R' {
-		inner := data[2 : len(data)-1]
-		for _, b := range inner {
-			if !(b >= '0' && b <= '9') && b != ';' {
-				return false
-			}
-		}
-		return len(inner) > 0
-	}
-	return false
+	last := data[len(data)-1]
+	return last >= 0x40 && last <= 0x7E
 }
