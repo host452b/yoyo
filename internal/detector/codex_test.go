@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"yoyo/internal/detector"
+	"github.com/host452b/yoyo/internal/detector"
 )
 
 func codexPrompt(action, command string, options []string) string {

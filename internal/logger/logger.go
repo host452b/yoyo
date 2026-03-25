@@ -5,13 +5,15 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 type Logger struct {
-	ch        chan string
-	done      chan struct{}
-	closeOnce sync.Once
+	ch           chan string
+	done         chan struct{}
+	closeOnce    sync.Once
+	droppedCount int64 // incremented when buffer is full and a message is dropped
 }
 
 // New opens the log file and starts the background write goroutine.
@@ -48,13 +50,19 @@ func (l *Logger) Errorf(format string, args ...any) {
 func (l *Logger) log(level, format string, args ...any) {
 	msg := fmt.Sprintf("[%s] %s %s\n",
 		level,
-		time.Now().Format("15:04:05.000"),
+		time.Now().Format("2006-01-02 15:04:05.000"),
 		fmt.Sprintf(format, args...),
 	)
 	select {
 	case l.ch <- msg:
-	default: // drop if buffer full to avoid blocking PTY loop
+	default:
+		atomic.AddInt64(&l.droppedCount, 1) // drop if buffer full to avoid blocking PTY loop
 	}
+}
+
+// DroppedCount returns the number of log messages dropped due to a full buffer.
+func (l *Logger) DroppedCount() int64 {
+	return atomic.LoadInt64(&l.droppedCount)
 }
 
 // Close flushes all pending log entries and closes the file.

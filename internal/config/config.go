@@ -17,7 +17,7 @@ type Rule struct {
 }
 
 type AgentConfig struct {
-	Delay int    // -1 = inherit defaults
+	Delay *int   // nil = inherit defaults, 0 = immediate, >0 = seconds
 	Rules []Rule
 }
 

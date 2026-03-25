@@ -4,7 +4,7 @@ package memory_test
 import (
 	"testing"
 
-	"yoyo/internal/memory"
+	"github.com/host452b/yoyo/internal/memory"
 )
 
 func TestMemory_NotSeenInitially(t *testing.T) {

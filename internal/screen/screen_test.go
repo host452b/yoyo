@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"yoyo/internal/screen"
+	"github.com/host452b/yoyo/internal/screen"
 )
 
 func TestScreen_FeedAndText(t *testing.T) {

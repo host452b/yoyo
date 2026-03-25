@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"yoyo/internal/detector"
+	"github.com/host452b/yoyo/internal/detector"
 )
 
 func cursorBox(lines []string) string {

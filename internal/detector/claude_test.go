@@ -4,7 +4,7 @@ package detector_test
 import (
 	"testing"
 
-	"yoyo/internal/detector"
+	"github.com/host452b/yoyo/internal/detector"
 )
 
 func claudePrompt(action string, options []string) string {
