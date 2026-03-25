@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	ptylib "github.com/aymanbagabas/go-pty"
@@ -35,33 +36,36 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Load config
-	cfg, err := config.Load(*cfgPath)
+	// Load config (expand tilde in --config flag value)
+	cfg, err := config.Load(config.ExpandTilde(*cfgPath))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "config error:", err)
 		os.Exit(1)
 	}
 
 	// Resolve effective settings
+	delayFromFlag := *delay >= 0
 	effectiveDelay := cfg.Defaults.Delay
-	if *delay >= 0 {
+	if delayFromFlag {
 		effectiveDelay = *delay
 	}
 	effectiveLog := cfg.Defaults.LogFile
 	if *logPath != "" {
-		effectiveLog = *logPath
+		effectiveLog = config.ExpandTilde(*logPath)
 	}
 
 	// Identify agent kind
 	kind := agent.KindFromCommand(args[0])
 
-	// Apply agent-specific delay override
-	if agentCfg, ok := cfg.Agents[kind.String()]; ok && agentCfg.Delay >= 0 {
-		effectiveDelay = agentCfg.Delay
+	// Apply agent-specific delay override only when --delay was not explicitly provided
+	if !delayFromFlag {
+		if agentCfg, ok := cfg.Agents[kind.String()]; ok && agentCfg.Delay >= 0 {
+			effectiveDelay = agentCfg.Delay
+		}
 	}
 
 	// Start logger
-	if err := os.MkdirAll(dirOf(effectiveLog), 0o755); err == nil {
+	if err := os.MkdirAll(filepath.Dir(effectiveLog), 0o755); err == nil {
 		// ignore mkdir error — logger.New will fail with a clear message
 	}
 	log, err := logger.New(effectiveLog)
@@ -178,13 +182,4 @@ func main() {
 	if err := pr.Run(); err != nil {
 		log.Errorf("proxy error: %v", err)
 	}
-}
-
-func dirOf(path string) string {
-	for i := len(path) - 1; i >= 0; i-- {
-		if path[i] == '/' || path[i] == '\\' {
-			return path[:i]
-		}
-	}
-	return "."
 }

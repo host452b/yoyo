@@ -39,7 +39,7 @@ func Load(path string) (*Config, error) {
 	cfg := &Config{}
 	cfg.Defaults.Delay = 3
 	cfg.Defaults.Enabled = true
-	cfg.Defaults.LogFile = expandTilde("~/.yoyo/yoyo.log")
+	cfg.Defaults.LogFile = ExpandTilde("~/.yoyo/yoyo.log")
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -54,17 +54,18 @@ func Load(path string) (*Config, error) {
 	}
 
 	// Apply tilde expansion to paths
-	cfg.Defaults.LogFile = expandTilde(cfg.Defaults.LogFile)
+	cfg.Defaults.LogFile = ExpandTilde(cfg.Defaults.LogFile)
 
 	return cfg, nil
 }
 
 // DefaultPath returns the default config file path (~/.config/yoyo/config.toml).
 func DefaultPath() string {
-	return expandTilde("~/.config/yoyo/config.toml")
+	return ExpandTilde("~/.config/yoyo/config.toml")
 }
 
-func expandTilde(path string) string {
+// ExpandTilde expands a leading "~/" to the user's home directory.
+func ExpandTilde(path string) string {
 	if !strings.HasPrefix(path, "~/") {
 		return path
 	}
