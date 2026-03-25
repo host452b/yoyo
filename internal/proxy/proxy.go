@@ -142,6 +142,12 @@ func (p *Proxy) Run() error {
 		select {
 		case data, ok := <-inputCh:
 			if !ok {
+				if approvalTimer != nil {
+					approvalTimer.Stop()
+				}
+				if prefixTimer != nil {
+					prefixTimer.Stop()
+				}
 				close(done)
 				return nil
 			}
@@ -166,6 +172,12 @@ func (p *Proxy) Run() error {
 
 		case data, ok := <-outputCh:
 			if !ok {
+				if approvalTimer != nil {
+					approvalTimer.Stop()
+				}
+				if prefixTimer != nil {
+					prefixTimer.Stop()
+				}
 				close(done)
 				return nil
 			}
