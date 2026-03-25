@@ -47,3 +47,10 @@ func TestRegexpDetector_InvalidPattern(t *testing.T) {
 		t.Error("expected error for invalid regexp")
 	}
 }
+
+func TestRegexpDetector_EmptyResponse(t *testing.T) {
+	_, err := detector.NewRegexpDetector("confirm", "Are you sure", "")
+	if err == nil {
+		t.Error("expected error for empty response")
+	}
+}

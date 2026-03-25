@@ -113,3 +113,37 @@ func TestLoad_FileNotFound(t *testing.T) {
 		t.Errorf("delay = %d, want 3", cfg.Defaults.Delay)
 	}
 }
+
+func TestLoad_NegativeDelay_ReturnsError(t *testing.T) {
+	path := writeConfig(t, "[defaults]\ndelay = -1\n")
+	_, err := config.Load(path)
+	if err == nil {
+		t.Error("expected error for negative delay in config, got nil")
+	}
+}
+
+func TestLoad_NegativeAgentDelay_ReturnsError(t *testing.T) {
+	path := writeConfig(t, "[agents.claude]\ndelay = -2\n")
+	_, err := config.Load(path)
+	if err == nil {
+		t.Error("expected error for negative agent delay in config, got nil")
+	}
+}
+
+func TestLoadRequired_MissingFile_ReturnsError(t *testing.T) {
+	_, err := config.LoadRequired("/nonexistent/explicit/path.toml")
+	if err == nil {
+		t.Error("expected error for explicitly-required missing config, got nil")
+	}
+}
+
+func TestLoadRequired_ExistingFile_Works(t *testing.T) {
+	path := writeConfig(t, "[defaults]\ndelay = 2\n")
+	cfg, err := config.LoadRequired(path)
+	if err != nil {
+		t.Fatal("expected no error:", err)
+	}
+	if cfg.Defaults.Delay != 2 {
+		t.Errorf("delay = %d, want 2", cfg.Defaults.Delay)
+	}
+}
