@@ -10,27 +10,16 @@ confirmation keystroke after a configurable delay — so you don't have to babys
 
 ## Installation
 
-### Option 1 — go install (recommended if you have Go)
-
-```bash
-go install github.com/host452b/yoyo/cmd/yoyo@latest
-```
-
-Requires Go 1.21+. The binary is placed in `$GOPATH/bin` (typically `~/go/bin`).
-Make sure that directory is in your `PATH`:
-
-```bash
-# add to ~/.bashrc or ~/.zshrc
-export PATH="$HOME/go/bin:$PATH"
-```
-
-### Option 2 — pre-built binary
-
-Download the latest binary for your platform from the [Releases page](https://github.com/host452b/yoyo/releases), then make it executable and move it onto your PATH:
+### Option 1 — pre-built binary (no Go required)
 
 ```bash
 # Linux (amd64)
 curl -L https://github.com/host452b/yoyo/releases/latest/download/yoyo-linux-amd64 -o yoyo
+chmod +x yoyo
+sudo mv yoyo /usr/local/bin/
+
+# Linux (arm64)
+curl -L https://github.com/host452b/yoyo/releases/latest/download/yoyo-linux-arm64 -o yoyo
 chmod +x yoyo
 sudo mv yoyo /usr/local/bin/
 
@@ -44,6 +33,21 @@ curl -L https://github.com/host452b/yoyo/releases/latest/download/yoyo-darwin-am
 chmod +x yoyo
 sudo mv yoyo /usr/local/bin/
 ```
+
+### Option 2 — go install (requires Go 1.21+)
+
+```bash
+go install github.com/host452b/yoyo/cmd/yoyo@latest
+```
+
+The binary is placed in `$GOPATH/bin` (typically `~/go/bin`). Make sure that directory is in your `PATH`:
+
+```bash
+# add to ~/.bashrc or ~/.zshrc
+export PATH="$HOME/go/bin:$PATH"
+```
+
+> **Go version:** `go install` requires Go 1.21+. Run `go version` to check. If you have an older version, use Option 1 (pre-built binary) instead.
 
 ### Option 3 — build from source
 
