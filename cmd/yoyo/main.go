@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	ptylib "github.com/aymanbagabas/go-pty"
+	xterm "golang.org/x/term"
 
 	"github.com/host452b/yoyo/internal/agent"
 	"github.com/host452b/yoyo/internal/config"
@@ -114,7 +115,9 @@ EXIT BEHAVIOR
 `
 
 func main() {
-	flag.Usage = func() { fmt.Fprint(os.Stderr, usageText) }
+	flag.Usage = func() {
+		fmt.Fprint(os.Stderr, helpText(xterm.IsTerminal(int(os.Stderr.Fd()))))
+	}
 
 	var (
 		delay   = flag.Int("delay", -1, "approval delay in seconds (0=immediate, -1=from config)")
