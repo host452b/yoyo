@@ -10,55 +10,59 @@ confirmation keystroke after a configurable delay — so you don't have to babys
 
 ## Installation
 
-### Option 1 — pre-built binary (no Go required)
+### One-line install (Linux & macOS)
+
+```bash
+curl -fsSL https://github.com/host452b/yoyo/releases/latest/download/install.sh | sh
+```
+
+Auto-detects your OS and architecture (linux/darwin × amd64/arm64). No Go required.
+
+---
+
+<details>
+<summary>Manual options</summary>
+
+### Pre-built binary
 
 ```bash
 # Linux (amd64)
 curl -L https://github.com/host452b/yoyo/releases/latest/download/yoyo-linux-amd64 -o yoyo
-chmod +x yoyo
-sudo mv yoyo /usr/local/bin/
+chmod +x yoyo && sudo mv yoyo /usr/local/bin/
 
 # Linux (arm64)
 curl -L https://github.com/host452b/yoyo/releases/latest/download/yoyo-linux-arm64 -o yoyo
-chmod +x yoyo
-sudo mv yoyo /usr/local/bin/
+chmod +x yoyo && sudo mv yoyo /usr/local/bin/
 
 # macOS (Apple Silicon)
 curl -L https://github.com/host452b/yoyo/releases/latest/download/yoyo-darwin-arm64 -o yoyo
-chmod +x yoyo
-sudo mv yoyo /usr/local/bin/
+chmod +x yoyo && sudo mv yoyo /usr/local/bin/
 
 # macOS (Intel)
 curl -L https://github.com/host452b/yoyo/releases/latest/download/yoyo-darwin-amd64 -o yoyo
-chmod +x yoyo
-sudo mv yoyo /usr/local/bin/
+chmod +x yoyo && sudo mv yoyo /usr/local/bin/
 ```
 
-### Option 2 — go install (requires Go 1.21+)
+### go install (requires Go 1.21+)
 
 ```bash
 go install github.com/host452b/yoyo/cmd/yoyo@latest
 ```
 
-The binary is placed in `$GOPATH/bin` (typically `~/go/bin`). Make sure that directory is in your `PATH`:
+> Run `go version` to check. If you have Go < 1.21, use the one-line install above.
 
-```bash
-# add to ~/.bashrc or ~/.zshrc
-export PATH="$HOME/go/bin:$PATH"
-```
-
-> **Go version:** `go install` requires Go 1.21+. Run `go version` to check. If you have an older version, use Option 1 (pre-built binary) instead.
-
-### Option 3 — build from source
+### Build from source
 
 ```bash
 git clone https://github.com/host452b/yoyo.git
 cd yoyo
 go build -o yoyo ./cmd/yoyo
-sudo mv yoyo /usr/local/bin/   # or any directory in $PATH
+sudo mv yoyo /usr/local/bin/
 ```
 
-### Verify installation
+</details>
+
+### Verify
 
 ```bash
 yoyo -h
