@@ -256,6 +256,10 @@ func TestProxy_E2E_SessionMemory(t *testing.T) {
 		t.Error("hash not recorded in memory after first approval")
 	}
 
+	// Simulate child redraw: clear screen so the prompt disappears (resets debounce)
+	pty.send("\x1b[2J\x1b[H")
+	time.Sleep(50 * time.Millisecond)
+
 	// Second occurrence of the same prompt: should be approved immediately via seen path
 	pty.send(claudePrompt)
 	waitWritten(t, pty, "\r\r", 2*time.Second) // two CRs total

@@ -34,7 +34,7 @@ func TestHelpText_Colored_SectionHeadersPresent(t *testing.T) {
 
 func TestHelpText_Colored_FlagNamesPresent(t *testing.T) {
 	text := helpText(true)
-	for _, flag := range []string{"-delay", "-config", "-log"} {
+	for _, flag := range []string{"-delay", "-config", "-log", "-dry-run", "-v"} {
 		if !strings.Contains(text, flag) {
 			t.Errorf("colored help text missing flag %q", flag)
 		}

@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 
 	"github.com/hinshun/vt10x"
+	"github.com/host452b/yoyo/internal/logger"
 )
 
 // Screen wraps a vt10x terminal to provide a simple interface for feeding PTY
@@ -14,6 +15,7 @@ type Screen struct {
 	mu         sync.Mutex
 	terminal   vt10x.Terminal
 	panicCount int64 // incremented each time Feed recovers a vt10x panic
+	log        *logger.Logger
 }
 
 // New creates a new Screen with the specified dimensions (cols, rows).
@@ -22,14 +24,24 @@ func New(cols, rows int) *Screen {
 	return &Screen{terminal: terminal}
 }
 
+// SetLogger attaches a logger for reporting recovered vt10x panics.
+func (s *Screen) SetLogger(log *logger.Logger) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.log = log
+}
+
 // Feed writes raw PTY data into the terminal emulator.
 // Recovers from panics in the vt10x library (e.g. cursor out-of-bounds).
 func (s *Screen) Feed(data []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	defer func() {
-		if recover() != nil {
+		if r := recover(); r != nil {
 			atomic.AddInt64(&s.panicCount, 1)
+			if s.log != nil {
+				s.log.Errorf("vt10x panic recovered: %v", r)
+			}
 		}
 	}()
 	s.terminal.Write(data)

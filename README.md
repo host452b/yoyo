@@ -111,12 +111,15 @@ yoyo -delay 5 codex
 
 ```
 [yoyo: on 3s]           enabled, 3-second delay, no prompt detected yet
-[yoyo: on 3s | Claude]  prompt detected — countdown started
+[yoyo: on 2s | Claude]  prompt detected — countdown active (2s remaining)
 [yoyo: on 0s | seen: X] already approved this session — sent immediately
 [yoyo: off]             auto-approve disabled (manual mode)
+[yoyo: ^Y …]           waiting for Ctrl+Y command key
+[yoyo: dry 3s]          dry-run mode — detects but does not approve
 ```
 
-- **Green** = auto-approve on
+- **Green** = auto-approve active
+- **Yellow** = countdown in progress, dry-run, or waiting for Ctrl+Y command
 - **Red** = auto-approve off
 
 ---
@@ -145,6 +148,8 @@ yoyo [flags] <command> [args...]
 | `-delay int` | `3` (from config) | Seconds to wait before auto-approving. `0` = approve immediately. `-1` = use config value. Explicit flag always takes priority over per-agent config. |
 | `-config string` | `~/.config/yoyo/config.toml` | Path to TOML config file. Supports `~/`. |
 | `-log string` | `~/.yoyo/yoyo.log` | Path to log file. Supports `~/`. |
+| `-dry-run` | off | Detect prompts but do not send approval keystrokes. The status bar shows `dry` instead of `on`. Useful for testing custom rules. |
+| `-v` | | Print version and exit. |
 
 Run `yoyo -h` for the full built-in reference.
 
@@ -220,6 +225,55 @@ yoyo remembers every prompt it has approved within the current session (keyed by
 - yoyo exits when the child process exits.
 - `SIGINT`, `SIGTERM`, `SIGHUP`, `SIGQUIT` restore the terminal and exit cleanly.
 - The terminal is always restored even if yoyo crashes internally (panic recovery).
+- On exit, yoyo prints a summary to stderr: `yoyo: 42 prompt(s) auto-approved`.
+
+---
+
+## Logging
+
+yoyo writes a log file at `~/.yoyo/yoyo.log` (configurable via `-log` flag or `defaults.log_file` in config).
+
+```
+[INFO]  2026-04-02 14:32:15.123 started claude (kind=claude, delay=3s)
+[INFO]  2026-04-02 14:32:20.456 prompt detected: Claude
+[INFO]  2026-04-02 14:32:23.456 approval timer fired, sending response for: Claude
+[ERROR] 2026-04-02 14:32:24.789 vt10x panic recovered: index out of range
+```
+
+Watch the log in real time:
+
+```bash
+tail -f ~/.yoyo/yoyo.log
+```
+
+---
+
+## Troubleshooting
+
+**My prompt isn't being detected**
+
+1. Run with `-dry-run` to see if yoyo recognizes the prompt without sending approvals:
+   ```bash
+   yoyo -dry-run my-agent
+   ```
+   If the status bar shows the rule name, detection works — check the delay or enable setting.
+
+2. Watch the log for detection events:
+   ```bash
+   tail -f ~/.yoyo/yoyo.log
+   ```
+
+3. For custom agents, add a `[[rules]]` entry with a regex that matches the prompt text visible on screen. Test your pattern against the visible text (not the raw ANSI output).
+
+**My terminal looks broken after yoyo exits**
+
+Run `reset` to restore terminal state. This can happen if yoyo is killed with `SIGKILL` (which cannot be caught).
+
+**Status bar flickers or doesn't appear**
+
+- Ensure your terminal supports ANSI escape sequences (most do).
+- If the terminal is too narrow (< 24 columns), the status bar is hidden automatically.
+- Resize events are tracked; the status bar repositions when the terminal is resized.
 
 ---
 

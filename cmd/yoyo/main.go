@@ -59,6 +59,12 @@ FLAGS
   -log string
         Path to log file. Supports ~/. (default: ~/.yoyo/yoyo.log)
 
+  -dry-run
+        Detect prompts but do not send approval keystrokes.
+        The status bar shows "dry" instead of "on". Useful for testing rules.
+
+  -v    Print version and exit.
+
 RUNTIME CONTROLS  (Ctrl+Y is the prefix key)
   Ctrl+Y  0     Toggle auto-approve on/off
   Ctrl+Y  1     Set delay to 1 second  (enables if currently off)
@@ -114,17 +120,27 @@ EXIT BEHAVIOR
   The terminal is always restored even if yoyo crashes internally.
 `
 
+// version is set at build time via -ldflags "-X main.version=..."
+var version = "dev"
+
 func main() {
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, helpText(xterm.IsTerminal(int(os.Stderr.Fd()))))
 	}
 
 	var (
-		delay   = flag.Int("delay", -1, "approval delay in seconds (0=immediate, -1=from config)")
-		logPath = flag.String("log", "", "log file path (default from config)")
-		cfgPath = flag.String("config", config.DefaultPath(), "config file path")
+		delay      = flag.Int("delay", -1, "approval delay in seconds (0=immediate, -1=from config)")
+		logPath    = flag.String("log", "", "log file path (default from config)")
+		cfgPath    = flag.String("config", config.DefaultPath(), "config file path")
+		showVer    = flag.Bool("v", false, "print version and exit")
+		dryRun     = flag.Bool("dry-run", false, "detect prompts but do not send approvals")
 	)
 	flag.Parse()
+
+	if *showVer {
+		fmt.Fprintf(os.Stderr, "yoyo %s\n", version)
+		os.Exit(0)
+	}
 
 	args := flag.Args()
 	if len(args) == 0 {
@@ -245,7 +261,11 @@ func main() {
 
 	// Start SIGWINCH watcher (Unix only; no-op on Windows)
 	scr := screen.New(cols, rows)
+	scr.SetLogger(log)
 	sb := statusbar.New(uint16(rows), uint16(cols), cfg.Defaults.Enabled, effectiveDelay)
+	if *dryRun {
+		sb.SetDryRun(true)
+	}
 
 	stopResize := t.WatchResize(func(c, r int) {
 		scr.Resize(c, r)
@@ -294,9 +314,15 @@ func main() {
 		AgentKind: kind,
 		Delay:     effectiveDelay,
 		Enabled:   cfg.Defaults.Enabled,
+		DryRun:    *dryRun,
 	})
 
 	if err := pr.Run(); err != nil {
 		log.Errorf("proxy error: %v", err)
+	}
+
+	// Exit summary
+	if n := pr.ApprovalCount(); n > 0 {
+		fmt.Fprintf(os.Stderr, "\nyoyo: %d prompt(s) auto-approved\n", n)
 	}
 }

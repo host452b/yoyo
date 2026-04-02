@@ -7,11 +7,12 @@ import (
 )
 
 const (
-	cursorSave    = "\x1b[s"
-	cursorRestore = "\x1b[u"
+	cursorSave    = "\x1b7"
+	cursorRestore = "\x1b8"
 	sgrReset      = "\x1b[0m"
 	fgGreen       = "\x1b[32m"
 	fgRed         = "\x1b[31m"
+	fgYellow      = "\x1b[33m"
 )
 
 // labelWidth is the fixed width of the status label (widest possible label).
@@ -27,9 +28,13 @@ type StatusBar struct {
 	cols      uint16
 	enabled   bool
 	delaySecs int
+	countdown int    // remaining seconds; -1 = no active countdown
 	rule      string
 	painted   bool
 	midSeq    bool
+	prefix    bool // true while waiting for Ctrl+Y command byte
+	dryRun    bool
+	buf       []byte // reusable output buffer
 }
 
 // New creates a StatusBar. enabled=true means auto-approve is active.
@@ -39,6 +44,7 @@ func New(rows, cols uint16, enabled bool, delaySecs int) *StatusBar {
 		cols:      cols,
 		enabled:   enabled,
 		delaySecs: delaySecs,
+		countdown: -1,
 	}
 }
 
@@ -58,6 +64,28 @@ func (sb *StatusBar) SetDelay(secs int) {
 func (sb *StatusBar) SetRule(rule string) {
 	sb.mu.Lock()
 	sb.rule = rule
+	sb.mu.Unlock()
+}
+
+// SetCountdown sets the remaining seconds shown during an active approval timer.
+// Pass -1 to clear the countdown display.
+func (sb *StatusBar) SetCountdown(secs int) {
+	sb.mu.Lock()
+	sb.countdown = secs
+	sb.mu.Unlock()
+}
+
+// SetPrefix sets the Ctrl+Y prefix-waiting indicator.
+func (sb *StatusBar) SetPrefix(active bool) {
+	sb.mu.Lock()
+	sb.prefix = active
+	sb.mu.Unlock()
+}
+
+// SetDryRun enables dry-run mode display.
+func (sb *StatusBar) SetDryRun(on bool) {
+	sb.mu.Lock()
+	sb.dryRun = on
 	sb.mu.Unlock()
 }
 
@@ -83,7 +111,7 @@ func (sb *StatusBar) WrapFrame(frame []byte) []byte {
 		return frame // terminal too narrow
 	}
 
-	col := sb.cols - lw + 1
+	col := sb.cols - lw
 
 	var clear []byte
 	if sb.painted && !prevMid {
@@ -100,29 +128,63 @@ func (sb *StatusBar) WrapFrame(frame []byte) []byte {
 	var paint []byte
 	if !sb.midSeq {
 		sb.painted = true
-		color := fgRed // off = red (warning)
-		if sb.enabled {
-			color = fgGreen // on = green (active/good)
-		}
+		color := sb.labelColor()
 		paint = overlayAt(sb.rows, col, color, label)
 	}
 
-	out := make([]byte, 0, len(clear)+len(frame)+len(paint))
-	out = append(out, clear...)
-	out = append(out, frame...)
-	out = append(out, paint...)
-	return out
+	// Reuse buffer to reduce allocations
+	need := len(clear) + len(frame) + len(paint)
+	if cap(sb.buf) < need {
+		sb.buf = make([]byte, 0, need+256)
+	}
+	sb.buf = sb.buf[:0]
+	sb.buf = append(sb.buf, clear...)
+	sb.buf = append(sb.buf, frame...)
+	sb.buf = append(sb.buf, paint...)
+	return sb.buf
+}
+
+func (sb *StatusBar) labelColor() string {
+	if sb.prefix {
+		return fgYellow
+	}
+	if !sb.enabled {
+		return fgRed
+	}
+	if sb.dryRun {
+		return fgYellow
+	}
+	if sb.countdown >= 0 {
+		return fgYellow // counting down — attention
+	}
+	return fgGreen
 }
 
 func (sb *StatusBar) labelText() string {
+	if sb.prefix {
+		return " [yoyo: ^Y …] "
+	}
 	if !sb.enabled {
+		if sb.dryRun {
+			return " [yoyo: dry off] "
+		}
 		return " [yoyo: off] "
 	}
-	rule := sb.rule
-	if rule == "" {
-		return fmt.Sprintf(" [yoyo: on %ds] ", sb.delaySecs)
+	mode := "on"
+	if sb.dryRun {
+		mode = "dry"
 	}
-	return fmt.Sprintf(" [yoyo: on %ds | %s] ", sb.delaySecs, rule)
+	// Active countdown: show remaining seconds
+	if sb.countdown >= 0 {
+		if sb.rule == "" {
+			return fmt.Sprintf(" [yoyo: %s %ds] ", mode, sb.countdown)
+		}
+		return fmt.Sprintf(" [yoyo: %s %ds | %s] ", mode, sb.countdown, sb.rule)
+	}
+	if sb.rule == "" {
+		return fmt.Sprintf(" [yoyo: %s %ds] ", mode, sb.delaySecs)
+	}
+	return fmt.Sprintf(" [yoyo: %s %ds | %s] ", mode, sb.delaySecs, sb.rule)
 }
 
 func overlayAt(row, col uint16, color, text string) []byte {

@@ -12,11 +12,11 @@ func TestStatusBar_PaintsLabel(t *testing.T) {
 	sb := statusbar.New(24, 80, true, 3)
 	out := sb.WrapFrame([]byte("hello"))
 	s := string(out)
-	// Should contain cursor save/restore
-	if !strings.Contains(s, "\x1b[s") {
+	// Should contain cursor save/restore (DEC style)
+	if !strings.Contains(s, "\x1b7") {
 		t.Error("expected cursor save sequence")
 	}
-	if !strings.Contains(s, "\x1b[u") {
+	if !strings.Contains(s, "\x1b8") {
 		t.Error("expected cursor restore sequence")
 	}
 	// Should contain the frame content
@@ -91,5 +91,56 @@ func TestStatusBar_NoPaintWhenTooNarrow(t *testing.T) {
 	if out != "x" {
 		t.Logf("narrow terminal output: %q", out)
 		// Accept pass-through or minimal output
+	}
+}
+
+func TestStatusBar_Countdown(t *testing.T) {
+	sb := statusbar.New(24, 80, true, 5)
+	sb.SetRule("Claude")
+	sb.SetCountdown(3)
+	out := string(sb.WrapFrame([]byte("x")))
+	if !strings.Contains(out, "3s") {
+		t.Error("should show countdown '3s'")
+	}
+	if !strings.Contains(out, "Claude") {
+		t.Error("should show rule name during countdown")
+	}
+}
+
+func TestStatusBar_CountdownClear(t *testing.T) {
+	sb := statusbar.New(24, 80, true, 5)
+	sb.SetCountdown(2)
+	sb.SetCountdown(-1) // clear
+	out := string(sb.WrapFrame([]byte("x")))
+	// Should show configured delay (5s), not countdown
+	if !strings.Contains(out, "5s") {
+		t.Error("after ClearCountdown, should show configured delay '5s'")
+	}
+}
+
+func TestStatusBar_Prefix(t *testing.T) {
+	sb := statusbar.New(24, 80, true, 3)
+	sb.SetPrefix(true)
+	out := string(sb.WrapFrame([]byte("x")))
+	if !strings.Contains(out, "^Y") {
+		t.Error("prefix mode should show ^Y indicator")
+	}
+}
+
+func TestStatusBar_DryRun(t *testing.T) {
+	sb := statusbar.New(24, 80, true, 3)
+	sb.SetDryRun(true)
+	out := string(sb.WrapFrame([]byte("x")))
+	if !strings.Contains(out, "dry") {
+		t.Error("dry-run mode should show 'dry' label")
+	}
+}
+
+func TestStatusBar_DryRunOff(t *testing.T) {
+	sb := statusbar.New(24, 80, false, 3)
+	sb.SetDryRun(true)
+	out := string(sb.WrapFrame([]byte("x")))
+	if !strings.Contains(out, "dry off") {
+		t.Error("dry-run + disabled should show 'dry off'")
 	}
 }

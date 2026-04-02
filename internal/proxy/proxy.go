@@ -6,6 +6,7 @@ import (
 	"os"
 	"runtime/debug"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/host452b/yoyo/internal/agent"
@@ -36,15 +37,22 @@ type Config struct {
 	AgentKind agent.Kind
 	Delay     int  // seconds
 	Enabled   bool
+	DryRun    bool
 }
 
 // Proxy is the coordinator that routes bytes between stdin, child PTY, and stdout.
 type Proxy struct {
-	cfg Config
+	cfg           Config
+	approvalCount int64 // atomic; total prompts approved
 }
 
 func New(cfg Config) *Proxy {
 	return &Proxy{cfg: cfg}
+}
+
+// ApprovalCount returns the number of prompts approved during this session.
+func (p *Proxy) ApprovalCount() int64 {
+	return atomic.LoadInt64(&p.approvalCount)
 }
 
 // safeGo launches fn in a goroutine with panic recovery.
@@ -127,12 +135,15 @@ func (p *Proxy) Run() error {
 
 	enabled := cfg.Enabled
 	delaySecs := cfg.Delay
+	dryRun := cfg.DryRun
 	agentKind := cfg.AgentKind
 	frames := 0
 
 	var approvalTimer *time.Timer
 	var timerCh <-chan time.Time
 	var lastResult *detector.MatchResult
+	var approvedHash string    // suppress re-approvals while prompt is still on screen
+	var approvalDeadline time.Time // for countdown display
 
 	var prefixTimer *time.Timer
 	var prefixTimerCh <-chan time.Time
@@ -140,6 +151,20 @@ func (p *Proxy) Run() error {
 
 	// Rebuild rule chain when agent kind is resolved
 	chain := cfg.RuleChain
+
+	// Helper to send approval (respects dry-run mode)
+	sendApproval := func(result *detector.MatchResult, label string) {
+		if dryRun {
+			if cfg.Log != nil {
+				cfg.Log.Infof("dry-run: would send %q for %s", result.Response, label)
+			}
+		} else {
+			if _, err := cfg.PTY.Write([]byte(result.Response)); err != nil && cfg.Log != nil {
+				cfg.Log.Errorf("failed to send %s response: %v", label, err)
+			}
+		}
+		atomic.AddInt64(&p.approvalCount, 1)
+	}
 
 	for {
 		select {
@@ -169,6 +194,7 @@ func (p *Proxy) Run() error {
 				approvalTimer.Stop()
 				approvalTimer = nil
 				timerCh = nil
+				cfg.StatusBar.SetCountdown(-1)
 			}
 
 			cfg.PTY.Write(data)
@@ -204,33 +230,43 @@ func (p *Proxy) Run() error {
 
 			if enabled {
 				result := chain.Detect(text)
-				if result != nil {
-					if cfg.Memory.Seen(result.Hash) {
-						cfg.StatusBar.SetRule("seen: " + result.RuleName)
-						if _, err := cfg.PTY.Write([]byte(result.Response)); err != nil && cfg.Log != nil {
-							cfg.Log.Errorf("failed to send seen-approval response: %v", err)
+				if result == nil {
+					approvedHash = "" // prompt gone, allow future re-approval
+				} else if result.Hash == approvedHash {
+					// Already approved this prompt instance; skip until it disappears
+				} else if cfg.Memory.Seen(result.Hash) {
+					cfg.StatusBar.SetRule("seen: " + result.RuleName)
+					approvedHash = result.Hash
+					sendApproval(result, "seen-approval")
+				} else {
+					if cfg.Log != nil {
+						cfg.Log.Infof("prompt detected: %s", result.RuleName)
+					}
+					cfg.StatusBar.SetRule(result.RuleName)
+					if delaySecs == 0 {
+						cfg.Memory.Record(result.Hash)
+						approvedHash = result.Hash
+						sendApproval(result, "immediate-approval")
+					} else if lastResult == nil || lastResult.Hash != result.Hash {
+						// New or changed prompt: (re)start timer
+						if approvalTimer != nil {
+							approvalTimer.Stop()
 						}
-					} else {
-						if cfg.Log != nil {
-							cfg.Log.Infof("prompt detected: %s", result.RuleName)
-						}
-						cfg.StatusBar.SetRule(result.RuleName)
-						if delaySecs == 0 {
-							cfg.Memory.Record(result.Hash)
-							if _, err := cfg.PTY.Write([]byte(result.Response)); err != nil && cfg.Log != nil {
-								cfg.Log.Errorf("failed to send immediate-approval response: %v", err)
-							}
-						} else if lastResult == nil || lastResult.Hash != result.Hash {
-							// New or changed prompt: (re)start timer
-							if approvalTimer != nil {
-								approvalTimer.Stop()
-							}
-							lastResult = result
-							approvalTimer = time.NewTimer(time.Duration(delaySecs) * time.Second)
-							timerCh = approvalTimer.C
-						}
+						lastResult = result
+						approvalTimer = time.NewTimer(time.Duration(delaySecs) * time.Second)
+						timerCh = approvalTimer.C
+						approvalDeadline = time.Now().Add(time.Duration(delaySecs) * time.Second)
 					}
 				}
+			}
+
+			// Update countdown display
+			if approvalTimer != nil {
+				remaining := int(time.Until(approvalDeadline).Seconds() + 0.5)
+				if remaining < 0 {
+					remaining = 0
+				}
+				cfg.StatusBar.SetCountdown(remaining)
 			}
 
 			out := cfg.StatusBar.WrapFrame(data)
@@ -239,14 +275,14 @@ func (p *Proxy) Run() error {
 		case <-timerCh:
 			timerCh = nil
 			approvalTimer = nil
+			cfg.StatusBar.SetCountdown(-1)
 			if lastResult != nil {
 				if cfg.Log != nil {
 					cfg.Log.Infof("approval timer fired, sending response for: %s", lastResult.RuleName)
 				}
 				cfg.Memory.Record(lastResult.Hash)
-				if _, err := cfg.PTY.Write([]byte(lastResult.Response)); err != nil && cfg.Log != nil {
-					cfg.Log.Errorf("failed to send delayed-approval response: %v", err)
-				}
+				approvedHash = lastResult.Hash
+				sendApproval(lastResult, "delayed-approval")
 				lastResult = nil
 			}
 
@@ -255,6 +291,7 @@ func (p *Proxy) Run() error {
 			prefixTimerCh = nil
 			prefixTimer = nil
 			prefixActive = false
+			cfg.StatusBar.SetPrefix(false)
 			cfg.PTY.Write([]byte{prefixByte})
 		}
 	}
@@ -278,6 +315,7 @@ func (p *Proxy) handlePrefix(
 
 	if *prefixActive {
 		*prefixActive = false
+		sb.SetPrefix(false)
 		if *prefixTimer != nil {
 			(*prefixTimer).Stop()
 			*prefixTimer = nil
@@ -292,6 +330,7 @@ func (p *Proxy) handlePrefix(
 				(*approvalTimer).Stop()
 				*approvalTimer = nil
 				*timerCh = nil
+				sb.SetCountdown(-1)
 			}
 			sb.Toggle()
 		case '1', '2', '3', '4', '5':
@@ -317,9 +356,13 @@ func (p *Proxy) handlePrefix(
 		if len(data) == 1 {
 			// Saw Ctrl+Y alone — enter prefix mode with timeout
 			*prefixActive = true
+			sb.SetPrefix(true)
 			t := time.NewTimer(prefixTimeout)
 			*prefixTimer = t
 			*prefixTimerCh = t.C
+			// Repaint to show prefix indicator
+			out := sb.WrapFrame([]byte{})
+			stdout.Write(out)
 			return nil
 		}
 		// Ctrl+Y followed immediately by another byte
