@@ -1,3 +1,17 @@
+```
+                  ╭───╮
+                  │ Y │
+                  ╰─┬─╯
+                    │
+               ╭────┴────╮
+               │  y o y o │
+               ╰────┬────╯
+                    │
+                  ╭─┴─╮
+                  │ ✓ │
+                  ╰───╯
+```
+
 # yoyo
 
 **you only yes once** — a PTY proxy that auto-approves AI agent permission prompts.
