@@ -282,7 +282,15 @@ func main() {
 	}
 	defer p.Close()
 
+	// Set PTY size BEFORE starting the child so the child never sees 0×0.
+	if err := p.Resize(cols, rows); err != nil {
+		log.Errorf("failed to set initial PTY size: %v", err)
+	}
+
 	cmd := p.Command(args[0], args[1:]...)
+	// Give the child a clean environment: correct TERM for the PTY,
+	// and strip tmux variables so the child doesn't think it's in tmux.
+	cmd.Env = buildChildEnv(os.Environ())
 	if err := cmd.Start(); err != nil {
 		t.Restore()
 		fmt.Fprintln(os.Stderr, "failed to start process:", err)
@@ -290,11 +298,6 @@ func main() {
 	}
 
 	log.Infof("started %s (kind=%s, delay=%ds)", args[0], kind, effectiveDelay)
-
-	// Set initial PTY size
-	if err := p.Resize(cols, rows); err != nil {
-		log.Errorf("failed to set initial PTY size: %v", err)
-	}
 
 	// Also hook resize to update PTY
 	stopResize2 := t.WatchResize(func(c, r int) {

@@ -5,6 +5,7 @@
 package proxy_test
 
 import (
+	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -411,6 +412,82 @@ func TestProxy_E2E_PrefixKeyTimeout(t *testing.T) {
 	default:
 		// still running — pass
 	}
+}
+
+// ── tmux-related tests ───────────────────────────────────────────────────────
+
+// 15. Prompt detection at non-80×24 screen sizes (tmux panes vary)
+func TestProxy_E2E_NonStandardScreenSizes(t *testing.T) {
+	sizes := []struct {
+		cols, rows int
+	}{
+		{120, 40},  // wide tmux pane
+		{200, 50},  // ultra-wide monitor
+		{60, 20},   // narrow tmux split
+		{132, 43},  // classic VT132
+		{40, 15},   // very narrow pane
+	}
+	for _, sz := range sizes {
+		name := fmt.Sprintf("%dx%d", sz.cols, sz.rows)
+		t.Run(name, func(t *testing.T) {
+			log, err := logger.New(t.TempDir() + "/test.log")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { log.Close() })
+
+			pty := newFakePTY()
+			stdin := newFakeStdin()
+			scr := screen.New(sz.cols, sz.rows)
+			sb := statusbar.New(uint16(sz.rows), uint16(sz.cols), true, 0)
+			chain := detector.RuleChain{agent.KindClaude.Detector()}
+
+			pr := proxy.New(proxy.Config{
+				PTY:       pty,
+				Stdin:     stdin,
+				Stdout:    io.Discard,
+				RuleChain: chain,
+				Memory:    memory.New(),
+				StatusBar: sb,
+				Log:       log,
+				Term:      term.NewNoOp(),
+				Screen:    scr,
+				AgentKind: agent.KindClaude,
+				Delay:     0,
+				Enabled:   true,
+			})
+
+			done := runProxy(pr)
+			pty.send(claudePrompt)
+			waitWritten(t, pty, "\r", 2*time.Second)
+
+			stdin.close()
+			pty.close()
+			<-done
+		})
+	}
+}
+
+// 16. tmux focus events (ESC [ I / ESC [ O) must NOT cancel pending approval
+func TestProxy_E2E_FocusEventsPreserveApproval(t *testing.T) {
+	pr, _, pty, stdin := makeProxy(t, agent.KindClaude, 2, true, nil)
+	defer pty.close()
+
+	done := runProxy(pr)
+	pty.send(claudePrompt)
+	time.Sleep(100 * time.Millisecond) // let timer start
+
+	// Send tmux focus-out and focus-in events
+	stdin.send("\x1b[O") // focus out
+	time.Sleep(50 * time.Millisecond)
+	stdin.send("\x1b[I") // focus in
+	time.Sleep(50 * time.Millisecond)
+
+	// Timer should NOT have been cancelled — approval fires after delay
+	waitWritten(t, pty, "\r", 3*time.Second)
+
+	stdin.close()
+	<-done
 }
 
 // 14. Unrecognised Ctrl+Y command: prefix + unknown byte forwarded to PTY
