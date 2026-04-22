@@ -240,6 +240,9 @@ func (p *Proxy) Run() error {
 			}
 
 			cfg.Screen.Feed(data)
+			if afkIdleTimer != nil {
+				afkIdleTimer.Reset(cfg.AfkIdle)
+			}
 			text := cfg.Screen.Text()
 
 			// Try to resolve unknown agent from screen during first 10 frames

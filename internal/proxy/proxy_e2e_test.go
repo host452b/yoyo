@@ -578,3 +578,30 @@ func TestProxy_E2E_AfkRearmsAndFiresTwice(t *testing.T) {
 	pty.close()
 	<-done
 }
+
+// 19. Output from child during idle window keeps resetting the AFK timer
+func TestProxy_E2E_AfkResetOnOutput(t *testing.T) {
+	pr, pty, stdin := makeProxyWithAfk(t, 300*time.Millisecond, false)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	// Keep pumping output every 100 ms for ~600 ms (>2× the idle window)
+	stop := make(chan struct{})
+	go func() {
+		tk := time.NewTicker(100 * time.Millisecond)
+		defer tk.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-tk.C:
+				pty.send(".")
+			}
+		}
+	}()
+
+	ensureNotWritten(t, pty, "y\r", 600*time.Millisecond)
+	close(stop)
+	pty.close()
+	<-done
+}
