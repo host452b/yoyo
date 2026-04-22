@@ -190,3 +190,40 @@ afk_idle = "-30s"
 		t.Error("expected error for negative afk_idle, got nil")
 	}
 }
+
+func TestLoad_AgentAfkOverride(t *testing.T) {
+	path := writeConfig(t, `
+[agents.claude]
+afk      = true
+afk_idle = "3m"
+`)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ac := cfg.Agents["claude"]
+	if ac.Afk == nil || !*ac.Afk {
+		t.Error("claude.afk should be explicitly true")
+	}
+	if ac.AfkIdle == nil || *ac.AfkIdle != 3*time.Minute {
+		t.Errorf("claude.afk_idle = %v, want 3m", ac.AfkIdle)
+	}
+}
+
+func TestLoad_AgentAfkOmitted_Nil(t *testing.T) {
+	path := writeConfig(t, `
+[agents.claude]
+delay = 1
+`)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ac := cfg.Agents["claude"]
+	if ac.Afk != nil {
+		t.Error("omitted afk should parse as nil (inherit)")
+	}
+	if ac.AfkIdle != nil {
+		t.Error("omitted afk_idle should parse as nil (inherit)")
+	}
+}

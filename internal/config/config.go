@@ -32,8 +32,11 @@ type Rule struct {
 }
 
 type AgentConfig struct {
-	Delay *int   // nil = inherit defaults, 0 = immediate, >0 = seconds
-	Rules []Rule
+	Delay      *int           // nil = inherit defaults
+	Afk        *bool          // nil = inherit defaults
+	AfkIdle    *time.Duration `toml:"-"`
+	AfkIdleRaw *Duration      `toml:"afk_idle"`
+	Rules      []Rule
 }
 
 type Defaults struct {
@@ -102,6 +105,17 @@ func load(path string, required bool) (*Config, error) {
 	for name, agent := range cfg.Agents {
 		if agent.Delay != nil && *agent.Delay < 0 {
 			return nil, fmt.Errorf("agents.%s.delay must be >= 0, got %d", name, *agent.Delay)
+		}
+	}
+
+	for name, a := range cfg.Agents {
+		if a.AfkIdleRaw != nil {
+			d := time.Duration(*a.AfkIdleRaw)
+			if d < 0 {
+				return nil, fmt.Errorf("agents.%s.afk_idle must be >= 0, got %s", name, d)
+			}
+			a.AfkIdle = &d
+			cfg.Agents[name] = a
 		}
 	}
 
