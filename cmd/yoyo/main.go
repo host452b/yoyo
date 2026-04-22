@@ -205,95 +205,33 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Resolve effective settings
-	delayFromFlag := *delay >= 0
-	effectiveDelay := cfg.Defaults.Delay
-	if delayFromFlag {
-		effectiveDelay = *delay
-	}
-	effectiveLog := cfg.Defaults.LogFile
-	if *logPath != "" {
-		effectiveLog = config.ExpandTilde(*logPath)
-	}
-
 	// Identify agent kind
 	kind := agent.KindFromCommand(args[0])
 
-	// Apply agent-specific delay override only when --delay was not explicitly provided.
-	// Delay is a pointer: nil means "inherit from defaults", non-nil means explicitly set.
-	if !delayFromFlag {
-		if agentCfg, ok := cfg.Agents[kind.String()]; ok && agentCfg.Delay != nil {
-			effectiveDelay = *agentCfg.Delay
-		}
+	// Build cliFlags from parsed flags (nil fields = flag not explicitly passed).
+	cliF := cliFlags{LogPath: *logPath}
+	if *delay >= 0 {
+		cliF.Delay = delay
 	}
-
-	// Resolve effective AFK.
-	var afkFromFlag, afkIdleFromFlag bool
 	flag.Visit(func(f *flag.Flag) {
 		switch f.Name {
 		case "afk":
-			afkFromFlag = true
+			cliF.Afk = afk
 		case "afk-idle":
-			afkIdleFromFlag = true
-		}
-	})
-
-	effectiveAfk := cfg.Defaults.Afk
-	effectiveAfkIdle := cfg.Defaults.AfkIdle
-	if agentCfg, ok := cfg.Agents[kind.String()]; ok {
-		if !afkFromFlag && agentCfg.Afk != nil {
-			effectiveAfk = *agentCfg.Afk
-		}
-		if !afkIdleFromFlag && agentCfg.AfkIdle != nil {
-			effectiveAfkIdle = *agentCfg.AfkIdle
-		}
-	}
-	if afkFromFlag {
-		effectiveAfk = *afk
-	}
-	if afkIdleFromFlag {
-		effectiveAfkIdle = *afkIdle
-	}
-	if effectiveAfkIdle <= 0 {
-		effectiveAfkIdle = 10 * time.Minute
-	}
-
-	// Resolve effective fuzzy.
-	var fuzzyFromFlag, fuzzyStableFromFlag bool
-	flag.Visit(func(f *flag.Flag) {
-		switch f.Name {
+			cliF.AfkIdle = afkIdle
 		case "fuzzy":
-			fuzzyFromFlag = true
+			cliF.Fuzzy = fuzzy
 		case "fuzzy-stable":
-			fuzzyStableFromFlag = true
+			cliF.FuzzyStable = fuzzyStable
 		}
 	})
-
-	effectiveFuzzy := cfg.Defaults.Fuzzy
-	effectiveFuzzyStable := cfg.Defaults.FuzzyStable
-	if agentCfg, ok := cfg.Agents[kind.String()]; ok {
-		if !fuzzyFromFlag && agentCfg.Fuzzy != nil {
-			effectiveFuzzy = *agentCfg.Fuzzy
-		}
-		if !fuzzyStableFromFlag && agentCfg.FuzzyStable != nil {
-			effectiveFuzzyStable = *agentCfg.FuzzyStable
-		}
-	}
-	if fuzzyFromFlag {
-		effectiveFuzzy = *fuzzy
-	}
-	if fuzzyStableFromFlag {
-		effectiveFuzzyStable = *fuzzyStable
-	}
-	if effectiveFuzzyStable <= 0 {
-		effectiveFuzzyStable = 3 * time.Second
-	}
+	eff := resolveEffective(cfg, kind, cliF)
 
 	// Start logger
-	if err := os.MkdirAll(filepath.Dir(effectiveLog), 0o755); err == nil {
+	if err := os.MkdirAll(filepath.Dir(eff.LogFile), 0o755); err == nil {
 		// ignore mkdir error — logger.New will fail with a clear message
 	}
-	log, err := logger.New(effectiveLog)
+	log, err := logger.New(eff.LogFile)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "logger error:", err)
 		os.Exit(1)
@@ -354,7 +292,7 @@ func main() {
 	// Start SIGWINCH watcher (Unix only; no-op on Windows)
 	scr := screen.New(cols, rows)
 	scr.SetLogger(log)
-	sb := statusbar.New(uint16(rows), uint16(cols), cfg.Defaults.Enabled, effectiveDelay)
+	sb := statusbar.New(uint16(rows), uint16(cols), cfg.Defaults.Enabled, eff.Delay)
 	if *dryRun {
 		sb.SetDryRun(true)
 	}
@@ -389,7 +327,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Infof("started %s (kind=%s, delay=%ds)", args[0], kind, effectiveDelay)
+	log.Infof("started %s (kind=%s, delay=%ds)", args[0], kind, eff.Delay)
 
 	// Also hook resize to update PTY
 	stopResize2 := t.WatchResize(func(c, r int) {
@@ -407,13 +345,13 @@ func main() {
 		Term:       t,
 		Screen:     scr,
 		AgentKind:  kind,
-		Delay:      effectiveDelay,
+		Delay:      eff.Delay,
 		Enabled:    cfg.Defaults.Enabled,
 		DryRun:     *dryRun,
-		AfkEnabled: effectiveAfk,
-		AfkIdle:    effectiveAfkIdle,
-		FuzzyEnabled: effectiveFuzzy,
-		FuzzyStable:  effectiveFuzzyStable,
+		AfkEnabled: eff.Afk,
+		AfkIdle:    eff.AfkIdle,
+		FuzzyEnabled: eff.Fuzzy,
+		FuzzyStable:  eff.FuzzyStable,
 	})
 
 	if err := pr.Run(); err != nil {
