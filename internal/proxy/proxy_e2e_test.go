@@ -670,3 +670,82 @@ func TestProxy_E2E_AfkToggleViaPrefix(t *testing.T) {
 	pty.close()
 	<-done
 }
+
+// makeProxyWithFuzzy wires up a proxy with fuzzy enabled and a short stable window.
+func makeProxyWithFuzzy(t *testing.T, stable time.Duration, dryRun bool) (*proxy.Proxy, *fakePTY, *fakeStdin) {
+	t.Helper()
+	log, err := logger.New(t.TempDir() + "/test.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { log.Close() })
+	pty := newFakePTY()
+	stdin := newFakeStdin()
+	scr := screen.New(80, 24)
+	sb := statusbar.New(24, 80, true, 0)
+	chain := detector.RuleChain{agent.KindClaude.Detector()} // claude detector won't match our test prompts
+	pr := proxy.New(proxy.Config{
+		PTY:          pty,
+		Stdin:        stdin,
+		Stdout:       io.Discard,
+		RuleChain:    chain,
+		Memory:       memory.New(),
+		StatusBar:    sb,
+		Log:          log,
+		Term:         term.NewNoOp(),
+		Screen:       scr,
+		AgentKind:    agent.KindClaude,
+		Delay:        0,
+		Enabled:      true,
+		DryRun:       dryRun,
+		FuzzyEnabled: true,
+		FuzzyStable:  stable,
+	})
+	return pr, pty, stdin
+}
+
+// 23. Fuzzy fires after stable window when last 15 lines match the vocab
+func TestProxy_E2E_FuzzyFires(t *testing.T) {
+	pr, pty, stdin := makeProxyWithFuzzy(t, 200*time.Millisecond, false)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	// Send a prompt that the built-in detectors will NOT match but fuzzy will.
+	pty.send("deploying to prod\r\ncontinue? (y/n) ")
+
+	// Fuzzy stable window is 200 ms; approval delay is 0; expect \r within 1 s.
+	waitWritten(t, pty, "\r", 1*time.Second)
+
+	pty.close()
+	<-done
+}
+
+// 24. Fuzzy does NOT fire when no vocab marker is present
+func TestProxy_E2E_FuzzyNoMatch(t *testing.T) {
+	pr, pty, stdin := makeProxyWithFuzzy(t, 150*time.Millisecond, false)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	pty.send("building... done\r\nwaiting... ")
+	ensureNotWritten(t, pty, "\r", 400*time.Millisecond)
+
+	pty.close()
+	<-done
+}
+
+// 25. Fuzzy in dry-run does not write to PTY
+func TestProxy_E2E_FuzzyDryRun(t *testing.T) {
+	pr, pty, stdin := makeProxyWithFuzzy(t, 150*time.Millisecond, true)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	pty.send("continue (y/n) ")
+	time.Sleep(400 * time.Millisecond)
+
+	if len(pty.written()) != 0 {
+		t.Errorf("dry-run wrote to PTY: %q", pty.written())
+	}
+
+	pty.close()
+	<-done
+}

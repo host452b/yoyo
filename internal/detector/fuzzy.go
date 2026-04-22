@@ -13,12 +13,18 @@ var fuzzyPattern = regexp.MustCompile(`(?i)\([yn]/[yn]\)|\[[yn]/[yn]\]|[yn]/[yn]
 
 // FuzzyMatch reports whether the last 15 lines of text contain a precise
 // y/n prompt marker. The last-15-lines window keeps the detector focused
-// on the currently visible prompt area.
+// on the currently visible prompt area. Trailing blank lines (common in
+// padded screen buffers) are stripped before the window is applied.
 func FuzzyMatch(text string) bool {
 	lines := strings.Split(text, "\n")
-	start := 0
-	if len(lines) > 15 {
-		start = len(lines) - 15
+	// Drop trailing blank/whitespace-only lines so the window covers real content.
+	end := len(lines)
+	for end > 0 && strings.TrimSpace(lines[end-1]) == "" {
+		end--
 	}
-	return fuzzyPattern.MatchString(strings.Join(lines[start:], "\n"))
+	start := 0
+	if end > 15 {
+		start = end - 15
+	}
+	return fuzzyPattern.MatchString(strings.Join(lines[start:end], "\n"))
 }

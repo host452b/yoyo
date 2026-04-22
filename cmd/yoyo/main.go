@@ -149,6 +149,8 @@ func main() {
 		dryRun     = flag.Bool("dry-run", false, "detect prompts but do not send approvals")
 		afk        = flag.Bool("afk", false, "enable AFK mode (idle-timer nudges)")
 		afkIdle    = flag.Duration("afk-idle", 10*time.Minute, "AFK idle threshold")
+		fuzzy       = flag.Bool("fuzzy", false, "enable generic fuzzy fallback detector")
+		fuzzyStable = flag.Duration("fuzzy-stable", 3*time.Second, "screen-stable window before fuzzy attempts vocabulary match")
 	)
 	flag.Parse()
 
@@ -241,6 +243,37 @@ func main() {
 	}
 	if effectiveAfkIdle <= 0 {
 		effectiveAfkIdle = 10 * time.Minute
+	}
+
+	// Resolve effective fuzzy.
+	var fuzzyFromFlag, fuzzyStableFromFlag bool
+	flag.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "fuzzy":
+			fuzzyFromFlag = true
+		case "fuzzy-stable":
+			fuzzyStableFromFlag = true
+		}
+	})
+
+	effectiveFuzzy := cfg.Defaults.Fuzzy
+	effectiveFuzzyStable := cfg.Defaults.FuzzyStable
+	if agentCfg, ok := cfg.Agents[kind.String()]; ok {
+		if !fuzzyFromFlag && agentCfg.Fuzzy != nil {
+			effectiveFuzzy = *agentCfg.Fuzzy
+		}
+		if !fuzzyStableFromFlag && agentCfg.FuzzyStable != nil {
+			effectiveFuzzyStable = *agentCfg.FuzzyStable
+		}
+	}
+	if fuzzyFromFlag {
+		effectiveFuzzy = *fuzzy
+	}
+	if fuzzyStableFromFlag {
+		effectiveFuzzyStable = *fuzzyStable
+	}
+	if effectiveFuzzyStable <= 0 {
+		effectiveFuzzyStable = 3 * time.Second
 	}
 
 	// Start logger
@@ -366,6 +399,8 @@ func main() {
 		DryRun:     *dryRun,
 		AfkEnabled: effectiveAfk,
 		AfkIdle:    effectiveAfkIdle,
+		FuzzyEnabled: effectiveFuzzy,
+		FuzzyStable:  effectiveFuzzyStable,
 	})
 
 	if err := pr.Run(); err != nil {

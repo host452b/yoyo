@@ -41,6 +41,9 @@ type Config struct {
 
 	AfkEnabled bool
 	AfkIdle    time.Duration
+
+	FuzzyEnabled bool
+	FuzzyStable  time.Duration
 }
 
 // Proxy is the coordinator that routes bytes between stdin, child PTY, and stdout.
@@ -180,6 +183,30 @@ func (p *Proxy) Run() error {
 	}
 	armAfk()
 
+	fuzzyEnabled := cfg.FuzzyEnabled
+	var fuzzyStableTimer *time.Timer
+	var fuzzyStableTimerCh <-chan time.Time
+	var fuzzyLastHash string
+
+	armFuzzyStable := func() {
+		if !fuzzyEnabled || cfg.FuzzyStable <= 0 {
+			return
+		}
+		if fuzzyStableTimer != nil {
+			fuzzyStableTimer.Stop()
+		}
+		fuzzyStableTimer = time.NewTimer(cfg.FuzzyStable)
+		fuzzyStableTimerCh = fuzzyStableTimer.C
+	}
+	stopFuzzy := func() {
+		if fuzzyStableTimer != nil {
+			fuzzyStableTimer.Stop()
+		}
+		fuzzyStableTimer = nil
+		fuzzyStableTimerCh = nil
+		fuzzyLastHash = ""
+	}
+
 	// Rebuild rule chain when agent kind is resolved
 	chain := cfg.RuleChain
 
@@ -208,6 +235,7 @@ func (p *Proxy) Run() error {
 					prefixTimer.Stop()
 				}
 				stopAfk()
+				stopFuzzy()
 				closeDone()
 				return nil
 			}
@@ -278,6 +306,7 @@ func (p *Proxy) Run() error {
 					prefixTimer.Stop()
 				}
 				stopAfk()
+				stopFuzzy()
 				closeDone()
 				return nil
 			}
@@ -288,6 +317,14 @@ func (p *Proxy) Run() error {
 				afkDeadline = time.Now().Add(cfg.AfkIdle)
 			}
 			text := cfg.Screen.Text()
+
+			if fuzzyEnabled {
+				h := detector.HashBody(text)
+				if h != fuzzyLastHash {
+					fuzzyLastHash = h
+					armFuzzyStable()
+				}
+			}
 
 			// Try to resolve unknown agent from screen during first 10 frames
 			if agentKind == agent.KindUnknown && frames < 10 {
@@ -401,6 +438,43 @@ func (p *Proxy) Run() error {
 			}
 			afkNudgedUntil = time.Now().Add(2 * time.Second)
 			armAfk()
+
+		case <-fuzzyStableTimerCh:
+			fuzzyStableTimerCh = nil
+			fuzzyStableTimer = nil
+			// Re-read the current text and run vocab match.
+			currentText := cfg.Screen.Text()
+			if !detector.FuzzyMatch(currentText) {
+				break
+			}
+			synth := &detector.MatchResult{
+				RuleName: "fuzzy",
+				Response: "\r",
+				Hash:     detector.HashBody(currentText),
+			}
+			if synth.Hash == approvedHash {
+				break // already handled
+			}
+			if cfg.Log != nil {
+				cfg.Log.Infof("fuzzy: match at stable-window expiry")
+			}
+			cfg.StatusBar.SetRule(synth.RuleName)
+			if cfg.Memory.Seen(synth.Hash) {
+				approvedHash = synth.Hash
+				sendApproval(synth, "fuzzy-seen-approval")
+			} else if delaySecs == 0 {
+				cfg.Memory.Record(synth.Hash)
+				approvedHash = synth.Hash
+				sendApproval(synth, "fuzzy-immediate-approval")
+			} else if lastResult == nil || lastResult.Hash != synth.Hash {
+				if approvalTimer != nil {
+					approvalTimer.Stop()
+				}
+				lastResult = synth
+				approvalTimer = time.NewTimer(time.Duration(delaySecs) * time.Second)
+				timerCh = approvalTimer.C
+				approvalDeadline = time.Now().Add(time.Duration(delaySecs) * time.Second)
+			}
 		}
 	}
 }

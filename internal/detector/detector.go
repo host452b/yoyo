@@ -35,3 +35,7 @@ func hashBody(body string) string {
 	sum := sha256.Sum256([]byte(body))
 	return fmt.Sprintf("%x", sum)
 }
+
+// HashBody is exported for callers outside this package (e.g. the proxy's
+// fuzzy stability check) that need a stable identifier for deduped text.
+func HashBody(body string) string { return hashBody(body) }
