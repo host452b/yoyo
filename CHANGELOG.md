@@ -4,6 +4,50 @@ All notable changes to yoyo are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] — 2026-04-22
+
+### Added
+
+- **Deletion-command safety guard** (`-no-safety` to opt out). yoyo
+  refuses to auto-approve when the visible screen contains a
+  deletion-class command: `rm -rf` (top-level/glob), `git rm -r`, `git
+  clean -f…`, `find … -delete` / `-exec rm`, SQL `DROP` / `TRUNCATE` /
+  naked `DELETE FROM`, `kubectl delete`, `terraform destroy`, and
+  `docker`/`podman volume rm` / `system prune`. Scope is deliberately
+  narrow (no mkfs/dd/chmod/curl|sh heuristics) to stay
+  container-dev-friendly. Status bar shows `danger: <snippet>` when
+  the guard trips; user can still approve manually. The AFK fire
+  path is guarded too — it's the highest-risk approval path.
+- **Config file permission warning**. `yoyo` prints a stderr warning
+  when `config.toml` is group- or world-writable, because a writable
+  config is a privilege-escalation vector (an attacker can inject
+  `[[rules]]` with `pattern=".*" response="y\r"`). Advisory only —
+  the config still loads.
+
+### Testing
+
+- **Fuzz targets** for every detector (Claude/Codex/Cursor + FuzzyMatch)
+  and `Screen.Feed`, using Go's native `testing.F`. Collectively
+  10M+ random inputs survive a 40-second fuzz pass with zero panics.
+- **Race-detector clean** across the full suite. Fixed a data race in
+  the AFK reset tests (sender goroutine vs. channel close).
+- **cmd/yoyo coverage** raised from 14.8% → 33.3% by extracting
+  flag-resolution priority logic into a testable
+  `resolveEffective()` function with a 9-test priority matrix.
+- **Fuzzy defers to specific detectors** (bug fix): previously a
+  screen that matched both Claude and fuzzy could produce two
+  approval writes due to distinct hash domains. Fuzzy now re-runs
+  `chain.Detect` at fire time and yields on match.
+- New **rigorous edge tests**: AFK toggle-off cancels pending fire,
+  fuzzy stability resets on content change, fuzzy respects `-delay`,
+  specific detector wins over fuzzy, FuzzyMatch ignores trailing
+  blank padding from vt10x.
+
+### Build
+
+- **Makefile** with `test` / `test-race` / `test-cover` /
+  `fuzz-quick` / `fuzz-long` / `build` / `install` / `tidy` targets.
+
 ## [2.1.0] — 2026-04-22
 
 Two opt-in fallback layers for prompts the built-in detectors miss, plus a Cursor

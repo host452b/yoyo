@@ -184,6 +184,24 @@ yoyo -afk -afk-idle 10m claude
 
 只要终端在配置的窗口内**既没输出也没输入**，yoyo 就先发 `y` + Enter，短暂停顿，再发 `continue, Choose based on your project understanding.` + Enter，然后重新起计时窗口。运行时用 `Ctrl+Y a` 切换开关。
 
+### 删除命令安全防护
+
+默认**开启**。当当前屏幕内容包含**删除/清理类**命令时，yoyo 拒绝自动批准。覆盖范围：
+
+- `rm -rf /`、`rm -rf ~`、`rm -rf *`（顶层或通配，不影响作用域明确的路径）
+- `git rm -r`、`git clean -f…`
+- `find … -delete`、`find … -exec rm`
+- SQL 的 `DROP DATABASE/TABLE/SCHEMA/USER`、`TRUNCATE TABLE`、裸 `DELETE FROM`（无 WHERE，尽力识别）
+- `kubectl delete <任何资源>`
+- `terraform destroy` / `terraform apply -destroy`
+- `docker` / `podman volume rm`、`system prune`、`image prune -a`
+
+命中时状态条变成 `danger: <匹配片段>`，日志也会记原因。你仍然可以手动按 `y` / Enter 自己批准。
+
+若你在受限环境（一次性容器、脚本化清理循环等）里跑、不在乎 `rm -rf`，可用 `-no-safety` 关闭。该防护刻意保持窄——**不会**拦 `mkfs`、`dd`、`chmod`、`chown`、`curl | sh`、`git push --force` 或 fork bomb 这类（容器环境下你常用，不该被挡）。
+
+**配置文件权限**启动时也会检查。如果 `config.toml` 可被 group 或 other 写入，stderr 会警告——可写配置意味着攻击者可以注入 `[[rules]]` 批准任何东西。加固方法：`chmod 600 ~/.config/yoyo/config.toml`。
+
 ### Fuzzy 保底
 
 第二层可选 detector，兜住内置 detector 认不出来的 y/n prompt。同时满足两个条件才触发：（1）屏幕在 `-fuzzy-stable`（默认 3 秒）窗口内保持不变；（2）最后 15 行里出现精确词表中的 y/n 标记，如 `(y/n)`、`[Y/n]`、`y/n?`、`yes/no` 等。光是 `Yes`、`enter` 这类常见英文词**不会**触发（防止日志、代码片段里的误报）。

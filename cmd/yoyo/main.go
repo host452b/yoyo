@@ -83,6 +83,15 @@ FLAGS
         Screen-stability window before fuzzy attempts a vocabulary
         match (default 3s).
 
+  -no-safety
+        Disable the deletion-command safety guard. By default yoyo
+        refuses to auto-approve when the visible screen contains
+        deletion-class commands (rm -rf, git rm -r, git clean,
+        find -delete, DROP/TRUNCATE TABLE, kubectl delete,
+        terraform destroy, docker system prune …). Pass this flag
+        only if you know your environment is safe (container dev
+        loops, scripted cleanup, etc.).
+
   -v    Print version and exit.
 
 RUNTIME CONTROLS  (Ctrl+Y is the prefix key)

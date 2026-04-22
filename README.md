@@ -191,6 +191,35 @@ yoyo injects `y` + Enter, pauses briefly, then sends
 `continue, Choose based on your project understanding.` + Enter, and
 rearms. Toggle at runtime with `Ctrl+Y a`.
 
+### Safety guard (deletion commands)
+
+Enabled by default. yoyo refuses to auto-approve when the visible screen
+contains a **deletion-class** command. The guard covers:
+
+- `rm -rf /`, `rm -rf ~`, `rm -rf *` (top-level or glob, not scoped paths)
+- `git rm -r`, `git clean -f…`
+- `find … -delete`, `find … -exec rm`
+- SQL `DROP DATABASE/TABLE/SCHEMA/USER`, `TRUNCATE TABLE`, `DELETE FROM`
+  (without `WHERE`, best-effort)
+- `kubectl delete <anything>`
+- `terraform destroy` / `terraform apply -destroy`
+- `docker`/`podman volume rm`, `system prune`, `image prune -a`
+
+When a match fires, the status bar shows `danger: <matched snippet>`
+and the log records the reason. You can still approve manually by
+pressing `y` / Enter yourself.
+
+Disable with `-no-safety` if your environment is already contained
+(e.g., disposable dev containers where `rm -rf` is routine). The guard
+is deliberately narrow and does **not** flag `mkfs`, `dd`, `chmod`,
+`chown`, `curl | sh`, `git push --force`, or fork bombs — they're
+out of scope.
+
+**Config file permissions** are also checked at startup. yoyo prints
+a stderr warning if `config.toml` is group- or world-writable —
+a writable config lets an attacker inject `[[rules]]` to auto-approve
+anything. Tighten with `chmod 600 ~/.config/yoyo/config.toml`.
+
 ### Fuzzy fallback
 
 A second opt-in layer that catches y/n prompts the built-in detectors
