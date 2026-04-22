@@ -28,6 +28,16 @@ curl -fsSL https://github.com/host452b/yoyo/releases/latest/download/install.sh 
 
 Auto-detects your OS and architecture (linux/darwin × amd64/arm64). No Go required.
 
+### pip (PyPI)
+
+```bash
+pip install yoyo
+```
+
+pip picks the matching pre-built wheel (linux-amd64 / linux-arm64 /
+macos-amd64 / macos-arm64). Same binary as the `curl | sh` install; no Go or
+Python-runtime dependency — the wheel bundles only the compiled Go binary.
+
 ---
 
 <details>

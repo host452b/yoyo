@@ -167,5 +167,34 @@ gh release create "$TAG" \
   "${DIST}/install.sh"
 
 echo
-echo "✓ released $TAG"
+echo "✓ released $TAG (GitHub)"
 echo "  https://github.com/${REPO}/releases/tag/${TAG}"
+
+# ── optional: PyPI wheels ────────────────────────────────────────────────────
+#
+# Build per-platform Python wheels for every published Go binary. Default is
+# build-only — the wheels are written to python/dist/ and the script prints a
+# twine command. Set UPLOAD_PYPI=1 to actually upload.
+
+if command -v python3 >/dev/null 2>&1 && [[ -f python/build_wheels.py ]]; then
+  echo
+  echo "building PyPI wheels ..."
+  python3 python/build_wheels.py "$TAG"
+
+  if [[ "${UPLOAD_PYPI:-0}" == "1" ]]; then
+    if ! command -v twine >/dev/null 2>&1; then
+      echo "UPLOAD_PYPI=1 set but twine not installed — run: pip install twine" >&2
+      exit 1
+    fi
+    echo
+    echo "uploading wheels to PyPI ..."
+    twine upload python/dist/yoyo-${TAG#v}-*.whl
+    echo "✓ uploaded to PyPI"
+    echo "  https://pypi.org/project/yoyo/${TAG#v}/"
+  else
+    echo
+    echo "Wheels built but NOT uploaded. To publish:"
+    echo "  UPLOAD_PYPI=1 ./scripts/release.sh $TAG"
+    echo "  # or: twine upload python/dist/yoyo-${TAG#v}-*.whl"
+  fi
+fi

@@ -4,6 +4,19 @@ All notable changes to yoyo are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.4] — 2026-04-22
+
+### Added
+
+- **PyPI distribution**: `pip install yoyo` now installs pre-built
+  Go binaries via per-platform wheels (linux-amd64, linux-arm64,
+  macos-amd64, macos-arm64). Wheels contain only the compiled Go
+  binary — no Python runtime dependency.
+  Build: `python3 python/build_wheels.py vX.Y.Z`. Extended
+  `scripts/release.sh` to build wheels automatically; set
+  `UPLOAD_PYPI=1` to also upload via `twine`. See
+  `python/build_wheels.py` for details.
+
 ## [2.2.3] — 2026-04-22
 
 ### Fixed

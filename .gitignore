@@ -1,1 +1,5 @@
 .worktrees/
+python/dist/
+python/build/
+python/__pycache__/
+*.pyc
