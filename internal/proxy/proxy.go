@@ -206,6 +206,39 @@ func (p *Proxy) Run() error {
 				closeDone()
 				return nil
 			}
+			// Handle Ctrl+Y a inline (rather than inside handlePrefix) because
+			// AFK state is local to Run. Covers two scenarios:
+			//   (A) "\x19a" arrives as one chunk from stdin
+			//   (B) "\x19" then "a" arrive as separate chunks (prefixActive=true)
+			toggleAfk := false
+			switch {
+			case len(data) >= 2 && data[0] == prefixByte && data[1] == 'a':
+				data = data[2:]
+				toggleAfk = true
+			case prefixActive && len(data) > 0 && data[0] == 'a':
+				data = data[1:]
+				toggleAfk = true
+			}
+			if toggleAfk {
+				prefixActive = false
+				cfg.StatusBar.SetPrefix(false)
+				if prefixTimer != nil {
+					prefixTimer.Stop()
+					prefixTimer = nil
+					prefixTimerCh = nil
+				}
+				afkEnabled = !afkEnabled
+				if afkEnabled {
+					armAfk()
+				} else {
+					stopAfk()
+				}
+				stdout.Write(cfg.StatusBar.WrapFrame([]byte{}))
+				if len(data) == 0 {
+					continue
+				}
+			}
+
 			data = p.handlePrefix(data, &prefixActive, &prefixTimer, &prefixTimerCh,
 				&enabled, &delaySecs, &approvalTimer, &timerCh, cfg, stdout)
 

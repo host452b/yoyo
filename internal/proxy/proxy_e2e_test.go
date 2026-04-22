@@ -649,3 +649,24 @@ func TestProxy_E2E_AfkDryRun(t *testing.T) {
 	pty.close()
 	<-done
 }
+
+// 22. Ctrl+Y a disables AFK at runtime; second Ctrl+Y a re-enables it
+func TestProxy_E2E_AfkToggleViaPrefix(t *testing.T) {
+	pr, pty, stdin := makeProxyWithAfk(t, 250*time.Millisecond, false)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	// Toggle OFF before any fire
+	stdin.send("\x19a")
+	time.Sleep(50 * time.Millisecond)
+
+	// No fire expected for >2× idle duration
+	ensureNotWritten(t, pty, "y\r", 700*time.Millisecond)
+
+	// Toggle ON — fire should occur within one idle window
+	stdin.send("\x19a")
+	waitWritten(t, pty, "y\r", 1*time.Second)
+
+	pty.close()
+	<-done
+}
