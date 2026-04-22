@@ -70,3 +70,31 @@ func FuzzFuzzyMatch(f *testing.F) {
 		_ = detector.FuzzyMatch(s)
 	})
 }
+
+// FuzzContainsDangerousCommand exercises the deletion-class pattern set
+// against arbitrary input. The contract: ContainsDangerousCommand must
+// never panic and must always return a valid (bool, string) where the
+// string (if non-empty) is a genuine substring of the input — callers
+// slice it into status bars and logs.
+func FuzzContainsDangerousCommand(f *testing.F) {
+	f.Add("rm -rf /")
+	f.Add("git rm -r")
+	f.Add("DROP TABLE users")
+	f.Add("kubectl delete ns foo")
+	f.Add("terraform destroy")
+	f.Add("find / -delete")
+	f.Add("")
+	f.Add(strings.Repeat("rm -rf /\n", 1000))
+	f.Add(strings.Repeat("kubectl delete ", 5000))
+	f.Add("\x00\x01\x02\x03")
+	f.Add("DROP " + strings.Repeat("TABLE ", 2000))
+	f.Fuzz(func(t *testing.T, s string) {
+		hit, matched := detector.ContainsDangerousCommand(s)
+		if hit && !strings.Contains(s, matched) {
+			t.Errorf("match snippet %q not a substring of input (len=%d)", matched, len(s))
+		}
+		if !hit && matched != "" {
+			t.Errorf("miss but non-empty snippet %q", matched)
+		}
+	})
+}

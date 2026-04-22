@@ -83,3 +83,63 @@ func TestKind_Detector_Unknown_TriesAll(t *testing.T) {
 
 // Ensure agent.Kind satisfies detector.Detector interface
 var _ detector.Detector = agent.Kind(0)
+
+// Additional command-name edge cases — Windows ext stripping, path
+// components, case-insensitive matching, multi-alias agents.
+func TestKindFromCommand_EdgeCases(t *testing.T) {
+	tests := []struct {
+		cmd  string
+		want agent.Kind
+	}{
+		// Windows extensions
+		{"claude.cmd", agent.KindClaude},
+		{"claude.bat", agent.KindClaude},
+		{"codex.exe", agent.KindCodex},
+		{"cursor.cmd", agent.KindCursor},
+		// Path components
+		{"/opt/tools/claude", agent.KindClaude},
+		{"/home/user/.local/bin/codex", agent.KindCodex},
+		{"./bin/cursor", agent.KindCursor},
+		{"../relative/claude.exe", agent.KindClaude},
+		// Case insensitivity
+		{"CLAUDE", agent.KindClaude},
+		{"Codex", agent.KindCodex},
+		{"Cursor", agent.KindCursor},
+		{"CURSOR-AGENT", agent.KindCursor},
+		// cursor-agent alias (existing detection path)
+		{"cursor-agent", agent.KindCursor},
+		{"/usr/local/bin/cursor-agent.exe", agent.KindCursor},
+		// Bare `agent` is NOT command-level recognized (too generic —
+		// would collide with ssh-agent etc.). Users running Cursor CLI
+		// as `agent` get KindUnknown here and rely on banner detection.
+		{"agent", agent.KindUnknown},
+		{"/usr/bin/ssh-agent", agent.KindUnknown},
+		// Other unknown commands
+		{"python", agent.KindUnknown},
+		{"bash", agent.KindUnknown},
+	}
+	for _, tc := range tests {
+		t.Run(tc.cmd, func(t *testing.T) {
+			if got := agent.KindFromCommand(tc.cmd); got != tc.want {
+				t.Errorf("KindFromCommand(%q) = %v, want %v", tc.cmd, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestKindFromScreen_PartialMatches(t *testing.T) {
+	// Banner must be a substring match. These should NOT trip as
+	// specific kinds — "claude" as a word in prose shouldn't mislabel.
+	negatives := []string{
+		"",
+		"claude without the Code suffix",
+		"CLAUDE CODE", // case-sensitive in current impl
+		"cursor rails through the void",
+		"my codex translation service",
+	}
+	for _, text := range negatives {
+		if got := agent.KindFromScreen(text); got != agent.KindUnknown {
+			t.Errorf("KindFromScreen(%q) = %v, want Unknown", text, got)
+		}
+	}
+}

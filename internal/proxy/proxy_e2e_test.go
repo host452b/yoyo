@@ -1154,3 +1154,107 @@ func TestProxy_E2E_SafetyBlocksAfkNudgeWithDanger(t *testing.T) {
 	pty.close()
 	<-done
 }
+
+// ── Additional hardening tests ──────────────────────────────────────────────
+
+// 37. cfg.Kill == nil must not crash: users of the proxy package can
+//     legitimately omit Kill (e.g. in tests that don't need the force-kill
+//     path), and hitting Ctrl+Y q or 3x Ctrl-C should degrade to a no-op.
+func TestProxy_E2E_NilKillCallback_NoPanic(t *testing.T) {
+	log, err := logger.New(t.TempDir() + "/test.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { log.Close() })
+	pty := newFakePTY()
+	stdin := newFakeStdin()
+	pr := proxy.New(proxy.Config{
+		PTY:       pty,
+		Stdin:     stdin,
+		Stdout:    io.Discard,
+		RuleChain: detector.RuleChain{agent.KindClaude.Detector()},
+		Memory:    memory.New(),
+		StatusBar: statusbar.New(24, 80, true, 0),
+		Log:       log,
+		Term:      term.NewNoOp(),
+		Screen:    screen.New(80, 24),
+		AgentKind: agent.KindClaude,
+		Enabled:   true,
+		// Kill: intentionally left nil.
+	})
+	defer stdin.close()
+	done := runProxy(pr)
+
+	// Ctrl+Y q with nil Kill — must not crash.
+	stdin.send("\x19q")
+	time.Sleep(100 * time.Millisecond)
+
+	// 3 Ctrl-C with nil Kill — must not crash.
+	stdin.send("\x03\x03\x03")
+	time.Sleep(100 * time.Millisecond)
+
+	// Proxy still running?
+	select {
+	case err := <-done:
+		t.Fatalf("proxy exited unexpectedly: %v", err)
+	default:
+		// still running — pass
+	}
+
+	pty.close()
+	<-done
+}
+
+// 38. Safety must block even the "memory-seen" fast path. A prompt hash
+//     that's already in memory (would normally approve immediately) must
+//     still be blocked if the current screen carries a dangerous command.
+//     Prevents a replay attack: attacker plants an innocuous prompt once,
+//     then later swaps in a destructive command with the same memory hash.
+func TestProxy_E2E_SafetyBlocksMemorySeenWithDanger(t *testing.T) {
+	log, err := logger.New(t.TempDir() + "/test.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { log.Close() })
+	pty := newFakePTY()
+	stdin := newFakeStdin()
+	scr := screen.New(80, 24)
+	sb := statusbar.New(24, 80, true, 0)
+	chain := detector.RuleChain{agent.KindClaude.Detector()}
+	mem := memory.New()
+	// Pre-seed memory with the hash of what claudeDeletePrompt produces
+	// through the Claude detector.
+	seedScr := screen.New(80, 24)
+	seedScr.Feed([]byte(claudeDeletePrompt))
+	result := detector.Claude{}.Detect(seedScr.Text())
+	if result == nil {
+		t.Fatal("setup: Claude detector didn't match seed prompt")
+	}
+	mem.Record(result.Hash)
+
+	pr := proxy.New(proxy.Config{
+		PTY:           pty,
+		Stdin:         stdin,
+		Stdout:        io.Discard,
+		RuleChain:     chain,
+		Memory:        mem,
+		StatusBar:     sb,
+		Log:           log,
+		Term:          term.NewNoOp(),
+		Screen:        scr,
+		AgentKind:     agent.KindClaude,
+		Delay:         0,
+		Enabled:       true,
+		SafetyEnabled: true,
+	})
+	defer stdin.close()
+	done := runProxy(pr)
+
+	pty.send(claudeDeletePrompt)
+	// Without safety + memory seen, this would approve instantly (0s
+	// delay). With safety on, the dangerous content blocks the write.
+	ensureNotWritten(t, pty, "\r", 400*time.Millisecond)
+
+	pty.close()
+	<-done
+}
