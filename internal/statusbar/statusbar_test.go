@@ -144,3 +144,30 @@ func TestStatusBar_DryRunOff(t *testing.T) {
 		t.Error("dry-run + disabled should show 'dry off'")
 	}
 }
+
+func TestStatusBar_AfkOff_NoSegment(t *testing.T) {
+	sb := statusbar.New(24, 80, true, 3)
+	sb.SetAfk(false, 0, false)
+	out := string(sb.WrapFrame([]byte("x")))
+	if strings.Contains(out, "afk") {
+		t.Error("afk segment should be absent when disabled")
+	}
+}
+
+func TestStatusBar_AfkCountdown_MMSS(t *testing.T) {
+	sb := statusbar.New(24, 80, true, 3)
+	sb.SetAfk(true, 7*60+23, false) // 7:23 remaining
+	out := string(sb.WrapFrame([]byte("x")))
+	if !strings.Contains(out, "afk 7:23") {
+		t.Errorf("expected 'afk 7:23' in label, got %q", out)
+	}
+}
+
+func TestStatusBar_AfkNudgedFlash(t *testing.T) {
+	sb := statusbar.New(24, 80, true, 3)
+	sb.SetAfk(true, 0, true)
+	out := string(sb.WrapFrame([]byte("x")))
+	if !strings.Contains(out, "afk nudged") {
+		t.Errorf("expected 'afk nudged' in label, got %q", out)
+	}
+}
