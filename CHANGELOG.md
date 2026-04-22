@@ -4,6 +4,26 @@ All notable changes to yoyo are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.3] — 2026-04-22
+
+### Fixed
+
+- **yoyo hung after short-lived child exited** (e.g.
+  `yoyo cat nonexistent-file`). The parent process kept its own copy
+  of the PTY slave fd open, so the master read never received EOF
+  when the child exited. Ctrl-C, Ctrl+Y q, and 3× Ctrl-C were all
+  no-ops in this state because the child was already dead. Fix:
+  close the parent's slave copy immediately after `cmd.Start()` so
+  the master sees EOF when the child (the last slave writer) exits.
+
+### Build
+
+- `scripts/release.sh` + `make release TAG=v2.X.Y`: one-command
+  manual release — cross-compiles all four platforms, generates
+  checksums, extracts release notes from CHANGELOG, and publishes
+  via `gh release create`. Replaces the removed GitHub Actions
+  workflow.
+
 ## [2.2.2] — 2026-04-22
 
 ### Fixed

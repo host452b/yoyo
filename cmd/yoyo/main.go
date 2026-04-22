@@ -339,6 +339,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Close the parent's copy of the PTY slave after the child has inherited
+	// it. Without this the master read never sees EOF when the child exits
+	// (e.g. `yoyo cat nonexistent-file` — cat errors and exits, but yoyo's
+	// proxy.Run() hangs because the master is still "connected" to a slave
+	// fd held by yoyo itself). No effect on the running child: it has its
+	// own dup'd slave fd.
+	if up, ok := p.(ptylib.UnixPty); ok {
+		if slave := up.Slave(); slave != nil {
+			_ = slave.Close()
+		}
+	}
+
 	log.Infof("started %s (kind=%s, delay=%ds)", args[0], kind, eff.Delay)
 
 	// Also hook resize to update PTY
