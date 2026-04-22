@@ -771,3 +771,148 @@ func TestProxy_E2E_FuzzyToggleViaPrefix(t *testing.T) {
 	pty.close()
 	<-done
 }
+
+// ── Rigorous edge-case tests (v2.1.0 hardening) ─────────────────────────────
+
+// 27. Toggling AFK OFF mid-countdown cancels the pending fire, not just
+//     future ones. Confirms stopAfk() actually stops the armed timer.
+func TestProxy_E2E_AfkToggleOffCancelsPendingFire(t *testing.T) {
+	pr, pty, stdin := makeProxyWithAfk(t, 250*time.Millisecond, false)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	// Let the idle timer arm and start counting down.
+	time.Sleep(100 * time.Millisecond)
+
+	// Disable AFK before the 250ms window elapses.
+	stdin.send("\x19a")
+
+	// Wait longer than the original idle window would have needed; no fire.
+	ensureNotWritten(t, pty, "y\r", 600*time.Millisecond)
+
+	pty.close()
+	<-done
+}
+
+// 28. Fuzzy stability timer must reset whenever the screen hash changes
+//     within the stable window. A flicker of new output right before the
+//     window expires should push the match to the next stable window.
+func TestProxy_E2E_FuzzyStabilityResetsOnChange(t *testing.T) {
+	pr, pty, stdin := makeProxyWithFuzzy(t, 250*time.Millisecond, false)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	// Prime the screen with a y/n prompt.
+	pty.send("continue (y/n) ")
+
+	// After 150ms — still inside the stable window — flicker new content.
+	time.Sleep(150 * time.Millisecond)
+	pty.send(".")
+
+	// The flicker pushes the stable window by another 250ms.
+	// At t=150+100=250ms total, no match should have fired yet.
+	ensureNotWritten(t, pty, "\r", 100*time.Millisecond)
+
+	// Once the new stable window elapses (250ms after the flicker),
+	// fuzzy matches and sends \r.
+	waitWritten(t, pty, "\r", 400*time.Millisecond)
+
+	pty.close()
+	<-done
+}
+
+// 29. Fuzzy matches must respect -delay like any other detector. A match
+//     with Delay=1 must NOT fire immediately; it must wait ~1 second.
+func TestProxy_E2E_FuzzyRespectsDelay(t *testing.T) {
+	log, err := logger.New(t.TempDir() + "/test.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { log.Close() })
+	pty := newFakePTY()
+	stdin := newFakeStdin()
+	scr := screen.New(80, 24)
+	sb := statusbar.New(24, 80, true, 1)
+	chain := detector.RuleChain{agent.KindClaude.Detector()}
+	pr := proxy.New(proxy.Config{
+		PTY:          pty,
+		Stdin:        stdin,
+		Stdout:       io.Discard,
+		RuleChain:    chain,
+		Memory:       memory.New(),
+		StatusBar:    sb,
+		Log:          log,
+		Term:         term.NewNoOp(),
+		Screen:       scr,
+		AgentKind:    agent.KindClaude,
+		Delay:        1, // 1-second approval delay
+		Enabled:      true,
+		FuzzyEnabled: true,
+		FuzzyStable:  150 * time.Millisecond,
+	})
+	defer stdin.close()
+	done := runProxy(pr)
+
+	pty.send("continue (y/n) ")
+
+	// Stability window (150ms) + delay (1s) ≈ 1.15s before fire.
+	// 500ms after the send, nothing should be written yet.
+	ensureNotWritten(t, pty, "\r", 500*time.Millisecond)
+
+	// By ~1.5s the delayed approval should have fired.
+	waitWritten(t, pty, "\r", 1500*time.Millisecond)
+
+	pty.close()
+	<-done
+}
+
+// 30. When a specific detector matches, fuzzy MUST NOT also fire. The
+//     specific detector owns the approval; fuzzy's stability timer either
+//     never arms (screen kept changing) or arms but finds the hash already
+//     approved via approvedHash dedup.
+func TestProxy_E2E_SpecificDetectorWinsOverFuzzy(t *testing.T) {
+	// Enable both fuzzy and the Claude detector. Send a Claude prompt that
+	// ALSO contains a fuzzy-compatible "(y/n)" snippet — we want exactly
+	// one \r, not two.
+	log, err := logger.New(t.TempDir() + "/test.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { log.Close() })
+	pty := newFakePTY()
+	stdin := newFakeStdin()
+	scr := screen.New(80, 24)
+	sb := statusbar.New(24, 80, true, 0)
+	chain := detector.RuleChain{agent.KindClaude.Detector()}
+	pr := proxy.New(proxy.Config{
+		PTY:          pty,
+		Stdin:        stdin,
+		Stdout:       io.Discard,
+		RuleChain:    chain,
+		Memory:       memory.New(),
+		StatusBar:    sb,
+		Log:          log,
+		Term:         term.NewNoOp(),
+		Screen:       scr,
+		AgentKind:    agent.KindClaude,
+		Delay:        0,
+		Enabled:      true,
+		FuzzyEnabled: true,
+		FuzzyStable:  100 * time.Millisecond,
+	})
+	defer stdin.close()
+	done := runProxy(pr)
+
+	// A prompt that BOTH the Claude detector and fuzzy would match.
+	pty.send(claudePrompt + "\r\ncontinue (y/n) ")
+
+	// Claude approves immediately. Give fuzzy ample time to (wrongly) also fire.
+	time.Sleep(500 * time.Millisecond)
+
+	if got := strings.Count(pty.written(), "\r"); got != 1 {
+		t.Errorf("expected exactly 1 approval write; got %d (%q)", got, pty.written())
+	}
+
+	pty.close()
+	<-done
+}

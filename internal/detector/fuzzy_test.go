@@ -55,3 +55,20 @@ func TestFuzzyMatch_OnlyScansLast15Lines(t *testing.T) {
 		t.Error("expected fuzzy miss — y/n marker is outside the last 15 lines")
 	}
 }
+
+// vt10x-rendered screens are padded to the configured row count with blank
+// lines after the last real content. Without trimming, the "last 15 lines"
+// window ends up entirely within the blank padding and the prompt never
+// matches. This test locks that behaviour in.
+func TestFuzzyMatch_IgnoresTrailingBlankPadding(t *testing.T) {
+	var sb []byte
+	sb = append(sb, []byte("deploying to prod\r\ncontinue? (y/n) ")...)
+	// Mirror Screen.Text()'s trailing-blank-line padding (80×24 screen with
+	// content on the first 2 rows → 22 blank rows after).
+	for i := 0; i < 22; i++ {
+		sb = append(sb, '\n')
+	}
+	if !detector.FuzzyMatch(string(sb)) {
+		t.Error("expected fuzzy hit — trailing blank padding must be trimmed before the 15-line window")
+	}
+}

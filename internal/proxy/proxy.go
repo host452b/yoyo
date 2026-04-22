@@ -458,6 +458,12 @@ func (p *Proxy) Run() error {
 			fuzzyStableTimer = nil
 			// Re-read the current text and run vocab match.
 			currentText := cfg.Screen.Text()
+			// Fuzzy is a fallback: if a specific detector currently matches
+			// this screen, let the outputCh approval path own it. Prevents a
+			// double-fire when a specific prompt also contains a y/n marker.
+			if r := chain.Detect(currentText); r != nil {
+				break
+			}
 			if !detector.FuzzyMatch(currentText) {
 				break
 			}
