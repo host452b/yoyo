@@ -206,7 +206,7 @@ afk_idle = "3m"
 		t.Error("claude.afk should be explicitly true")
 	}
 	if ac.AfkIdle == nil || *ac.AfkIdle != 3*time.Minute {
-		t.Errorf("claude.afk_idle = %v, want 3m", ac.AfkIdle)
+		t.Errorf("claude.afk_idle = %v, want 3m", *ac.AfkIdle)
 	}
 }
 

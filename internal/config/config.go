@@ -32,7 +32,7 @@ type Rule struct {
 }
 
 type AgentConfig struct {
-	Delay      *int           // nil = inherit defaults
+	Delay      *int           // nil = inherit defaults, 0 = immediate, >0 = seconds
 	Afk        *bool          // nil = inherit defaults
 	AfkIdle    *time.Duration `toml:"-"`
 	AfkIdleRaw *Duration      `toml:"afk_idle"`
