@@ -64,6 +64,15 @@ FLAGS
         Detect prompts but do not send approval keystrokes.
         The status bar shows "dry" instead of "on". Useful for testing rules.
 
+  -afk
+        Enable AFK mode: after afk-idle without any output or input, yoyo
+        injects 'y' + Enter, then 'continue, Choose based on your project
+        understanding.' + Enter, and rearms. Loops until Ctrl+Y a is pressed.
+
+  -afk-idle duration
+        Idle threshold before AFK fires (default 10m). Accepts Go duration
+        strings like "30m", "1h", "90s".
+
   -v    Print version and exit.
 
 RUNTIME CONTROLS  (Ctrl+Y is the prefix key)
@@ -73,6 +82,7 @@ RUNTIME CONTROLS  (Ctrl+Y is the prefix key)
   Ctrl+Y  3     Set delay to 3 seconds (enables if currently off)
   Ctrl+Y  4     Set delay to 4 seconds (enables if currently off)
   Ctrl+Y  5     Set delay to 5 seconds (enables if currently off)
+  Ctrl+Y  a     Toggle AFK mode on/off (independent of auto-approve)
 
   Pressing any non-escape key while the countdown is running cancels
   the pending approval, letting you inspect or respond manually.
@@ -81,6 +91,8 @@ CONFIG FILE  (~/.config/yoyo/config.toml)
   [defaults]
   delay    = 3       # default approval delay in seconds
   enabled  = true    # start with auto-approve on
+  afk      = false   # enable AFK idle-nudge mode
+  afk_idle = "10m"   # idle threshold before nudging
   log_file = "~/.yoyo/yoyo.log"
 
   # Per-agent overrides (keys: "claude", "codex", "cursor")

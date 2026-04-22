@@ -172,6 +172,21 @@ The prefix key is **Ctrl+Y**. Press Ctrl+Y, then:
 
 **Cancel pending approval:** press any non-escape key while the countdown is running.
 
+### AFK mode
+
+Some agent prompts don't match yoyo's detectors and the agent blocks on
+`read()` forever. `-afk` sets a dumb idle timer that nudges the agent
+after a configured silence:
+
+```
+yoyo -afk -afk-idle 10m claude
+```
+
+Every time the terminal sees no output *and* no input for the idle window,
+yoyo injects `y` + Enter, pauses briefly, then sends
+`continue, Choose based on your project understanding.` + Enter, and
+rearms. Toggle at runtime with `Ctrl+Y a`.
+
 ---
 
 ## Config File
