@@ -8,6 +8,8 @@
 
 # yoyo
 
+> **English** · [简体中文](README.zh-CN.md)
+
 **you only yes once** — a PTY proxy that auto-approves AI agent permission prompts.
 
 yoyo sits between your terminal and an AI agent CLI (Claude Code, Codex, Cursor, …).
@@ -169,6 +171,8 @@ The prefix key is **Ctrl+Y**. Press Ctrl+Y, then:
 |-----|--------|
 | `0` | Toggle auto-approve on/off |
 | `1`–`5` | Set delay to N seconds (also re-enables if currently off) |
+| `a` | Toggle AFK mode on/off (independent of auto-approve) |
+| `f` | Toggle fuzzy fallback on/off |
 
 **Cancel pending approval:** press any non-escape key while the countdown is running.
 
@@ -213,9 +217,13 @@ Default location: `~/.config/yoyo/config.toml`
 
 ```toml
 [defaults]
-delay    = 3              # approval delay in seconds (0 = immediate)
-enabled  = true           # start with auto-approve on
-log_file = "~/.yoyo/yoyo.log"
+delay        = 3              # approval delay in seconds (0 = immediate)
+enabled      = true           # start with auto-approve on
+afk          = false          # enable AFK idle-nudge mode
+afk_idle     = "10m"          # idle threshold before nudging
+fuzzy        = false          # enable generic fuzzy fallback
+fuzzy_stable = "3s"           # screen-stable window before fuzzy attempts match
+log_file     = "~/.yoyo/yoyo.log"
 
 # Per-agent delay overrides (overridden by explicit -delay flag)
 [agents.claude]
@@ -252,6 +260,7 @@ For a given agent, rules are evaluated in this priority order — first match wi
 1. Agent-specific custom rules (`agents.<name>.rules`)
 2. Global custom rules (`rules`)
 3. Built-in detector for the agent kind
+4. Fuzzy fallback (only if `-fuzzy` is enabled and the screen-stable window has elapsed)
 
 ---
 
@@ -343,6 +352,12 @@ yoyo auto-approves prompts that match its detector rules. A malicious program or
 - Keep custom `pattern` rules in your config as specific as possible — overly broad patterns increase the injection surface.
 
 yoyo is designed for development workflows where you trust the agent and its environment. It is not designed to be safe in adversarial environments.
+
+---
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
