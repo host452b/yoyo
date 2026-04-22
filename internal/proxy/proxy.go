@@ -275,17 +275,19 @@ func (p *Proxy) Run() error {
 				return nil
 			}
 			// Force-kill escape hatch: three Ctrl-C (0x03) presses within
-			// 500 ms trigger cfg.Kill(). Covers the case where the agent's
+			// 1 s trigger cfg.Kill(). Covers the case where the agent's
 			// TUI has wedged its input handling and normal Ctrl-C isn't
-			// taking effect anymore. Also honoured: Ctrl+Y q (below).
+			// taking effect anymore. The 1-second window is deliberately
+			// generous — 500ms proved too tight in practice for users
+			// whose frustrated-Ctrl-C cadence is ~600ms. Also honoured:
+			// Ctrl+Y q (below).
 			for _, b := range data {
 				if b != 0x03 {
 					ctrlCHits = ctrlCHits[:0]
 					continue
 				}
 				now := time.Now()
-				// Drop timestamps older than 500 ms.
-				cut := now.Add(-500 * time.Millisecond)
+				cut := now.Add(-1 * time.Second)
 				trimmed := ctrlCHits[:0]
 				for _, t := range ctrlCHits {
 					if t.After(cut) {
@@ -295,7 +297,7 @@ func (p *Proxy) Run() error {
 				ctrlCHits = append(trimmed, now)
 				if len(ctrlCHits) >= 3 && cfg.Kill != nil {
 					if cfg.Log != nil {
-						cfg.Log.Errorf("force-kill: 3x Ctrl-C within 500ms — killing child")
+						cfg.Log.Errorf("force-kill: 3x Ctrl-C within 1s — killing child")
 					}
 					cfg.Kill()
 					ctrlCHits = ctrlCHits[:0]
