@@ -60,12 +60,23 @@ intentional: the user explicitly opted into AFK, and any automatic
 
 ### Runtime toggle
 
-- `Ctrl+Y a` toggles AFK on/off.
-- When toggled off, any pending idle timer is stopped.
-- When toggled on, the idle timer is armed fresh (as if activity just
-  occurred).
-- The `-afk-idle` value is not adjustable at runtime in v1; it is fixed at
-  the startup value.
+`Ctrl+Y a` is a pure toggle — the same keystroke both activates and
+deactivates AFK depending on its current state:
+
+- If AFK is currently **off** → `Ctrl+Y a` **activates** it; the idle timer
+  is armed fresh (as if activity just occurred) using the current
+  `-afk-idle` value.
+- If AFK is currently **on** → `Ctrl+Y a` **deactivates** it; any pending
+  idle timer is stopped and no further nudges will fire.
+
+The initial on/off state at startup is determined by the `-afk` flag (or
+the config file), but the toggle key works from either starting state. A
+user who did not pass `-afk` can still activate AFK at runtime by pressing
+`Ctrl+Y a`; a user who did pass `-afk` can likewise deactivate it with the
+same keystroke.
+
+The `-afk-idle` duration is not adjustable at runtime in v1; it is fixed at
+the startup value and applied whenever AFK is toggled on.
 
 ### Status bar
 
