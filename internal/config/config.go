@@ -7,9 +7,23 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/pelletier/go-toml/v2"
 )
+
+// Duration is a TOML-serialisable wrapper around time.Duration that parses
+// strings like "10m" / "1h30m" via UnmarshalText.
+type Duration time.Duration
+
+func (d *Duration) UnmarshalText(text []byte) error {
+	v, err := time.ParseDuration(string(text))
+	if err != nil {
+		return err
+	}
+	*d = Duration(v)
+	return nil
+}
 
 type Rule struct {
 	Name     string
@@ -18,14 +32,27 @@ type Rule struct {
 }
 
 type AgentConfig struct {
-	Delay *int   // nil = inherit defaults, 0 = immediate, >0 = seconds
-	Rules []Rule
+	Delay          *int           // nil = inherit defaults, 0 = immediate, >0 = seconds
+	Afk            *bool          // nil = inherit defaults
+	AfkIdle        *time.Duration `toml:"-"`
+	AfkIdleRaw     *Duration      `toml:"afk_idle"`
+	Fuzzy          *bool
+	FuzzyStable    *time.Duration `toml:"-"`
+	FuzzyStableRaw *Duration      `toml:"fuzzy_stable"`
+	Rules          []Rule
 }
 
 type Defaults struct {
 	Delay   int
 	Enabled bool
-	LogFile string `toml:"log_file"`
+	Afk     bool
+	AfkIdle time.Duration `toml:"-"`
+	// AfkIdleRaw is the TOML source; copied into AfkIdle after validation.
+	AfkIdleRaw     Duration `toml:"afk_idle"`
+	Fuzzy          bool
+	FuzzyStable    time.Duration `toml:"-"`
+	FuzzyStableRaw Duration      `toml:"fuzzy_stable"`
+	LogFile        string        `toml:"log_file"`
 }
 
 type Config struct {
@@ -67,6 +94,26 @@ func load(path string, required bool) (*Config, error) {
 	// Apply tilde expansion to paths
 	cfg.Defaults.LogFile = ExpandTilde(cfg.Defaults.LogFile)
 
+	// afk_idle: default 10 minutes when unset; negative is invalid.
+	if cfg.Defaults.AfkIdleRaw == 0 {
+		cfg.Defaults.AfkIdle = 10 * time.Minute
+	} else {
+		cfg.Defaults.AfkIdle = time.Duration(cfg.Defaults.AfkIdleRaw)
+	}
+	if cfg.Defaults.AfkIdle < 0 {
+		return nil, fmt.Errorf("defaults.afk_idle must be >= 0, got %s", cfg.Defaults.AfkIdle)
+	}
+
+	// fuzzy_stable: default 3 s when unset; negative is invalid.
+	if cfg.Defaults.FuzzyStableRaw == 0 {
+		cfg.Defaults.FuzzyStable = 3 * time.Second
+	} else {
+		cfg.Defaults.FuzzyStable = time.Duration(cfg.Defaults.FuzzyStableRaw)
+	}
+	if cfg.Defaults.FuzzyStable < 0 {
+		return nil, fmt.Errorf("defaults.fuzzy_stable must be >= 0, got %s", cfg.Defaults.FuzzyStable)
+	}
+
 	// Validate delay values
 	if cfg.Defaults.Delay < 0 {
 		return nil, fmt.Errorf("defaults.delay must be >= 0, got %d", cfg.Defaults.Delay)
@@ -74,6 +121,29 @@ func load(path string, required bool) (*Config, error) {
 	for name, agent := range cfg.Agents {
 		if agent.Delay != nil && *agent.Delay < 0 {
 			return nil, fmt.Errorf("agents.%s.delay must be >= 0, got %d", name, *agent.Delay)
+		}
+	}
+
+	for name, a := range cfg.Agents {
+		changed := false
+		if a.AfkIdleRaw != nil {
+			d := time.Duration(*a.AfkIdleRaw)
+			if d < 0 {
+				return nil, fmt.Errorf("agents.%s.afk_idle must be >= 0, got %s", name, d)
+			}
+			a.AfkIdle = &d
+			changed = true
+		}
+		if a.FuzzyStableRaw != nil {
+			d := time.Duration(*a.FuzzyStableRaw)
+			if d < 0 {
+				return nil, fmt.Errorf("agents.%s.fuzzy_stable must be >= 0, got %s", name, d)
+			}
+			a.FuzzyStable = &d
+			changed = true
+		}
+		if changed {
+			cfg.Agents[name] = a
 		}
 	}
 

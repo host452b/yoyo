@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	ptylib "github.com/aymanbagabas/go-pty"
 	xterm "golang.org/x/term"
@@ -63,6 +64,25 @@ FLAGS
         Detect prompts but do not send approval keystrokes.
         The status bar shows "dry" instead of "on". Useful for testing rules.
 
+  -afk
+        Enable AFK mode: after afk-idle without any output or input, yoyo
+        injects 'y' + Enter, then 'continue, Choose based on your project
+        understanding.' + Enter, and rearms. Loops until Ctrl+Y a is pressed.
+
+  -afk-idle duration
+        Idle threshold before AFK fires (default 10m). Accepts Go duration
+        strings like "30m", "1h", "90s".
+
+  -fuzzy
+        Enable the generic fuzzy fallback detector. Runs after all
+        specific detectors. Matches narrow y/n prompt markers
+        ((y/n), [Y/n], yes/no, …) when the screen has been stable
+        for -fuzzy-stable.
+
+  -fuzzy-stable duration
+        Screen-stability window before fuzzy attempts a vocabulary
+        match (default 3s).
+
   -v    Print version and exit.
 
 RUNTIME CONTROLS  (Ctrl+Y is the prefix key)
@@ -72,6 +92,8 @@ RUNTIME CONTROLS  (Ctrl+Y is the prefix key)
   Ctrl+Y  3     Set delay to 3 seconds (enables if currently off)
   Ctrl+Y  4     Set delay to 4 seconds (enables if currently off)
   Ctrl+Y  5     Set delay to 5 seconds (enables if currently off)
+  Ctrl+Y  a     Toggle AFK mode on/off (independent of auto-approve)
+  Ctrl+Y  f     Toggle fuzzy fallback on/off
 
   Pressing any non-escape key while the countdown is running cancels
   the pending approval, letting you inspect or respond manually.
@@ -80,6 +102,10 @@ CONFIG FILE  (~/.config/yoyo/config.toml)
   [defaults]
   delay    = 3       # default approval delay in seconds
   enabled  = true    # start with auto-approve on
+  afk      = false   # enable AFK idle-nudge mode
+  afk_idle = "10m"   # idle threshold before nudging
+  fuzzy        = false   # enable generic fuzzy fallback
+  fuzzy_stable = "3s"    # screen-stable window before fuzzy attempts match
   log_file = "~/.yoyo/yoyo.log"
 
   # Per-agent overrides (keys: "claude", "codex", "cursor")
@@ -134,6 +160,10 @@ func main() {
 		cfgPath    = flag.String("config", config.DefaultPath(), "config file path")
 		showVer    = flag.Bool("v", false, "print version and exit")
 		dryRun     = flag.Bool("dry-run", false, "detect prompts but do not send approvals")
+		afk        = flag.Bool("afk", false, "enable AFK mode (idle-timer nudges)")
+		afkIdle    = flag.Duration("afk-idle", 10*time.Minute, "AFK idle threshold")
+		fuzzy       = flag.Bool("fuzzy", false, "enable generic fuzzy fallback detector")
+		fuzzyStable = flag.Duration("fuzzy-stable", 3*time.Second, "screen-stable window before fuzzy attempts vocabulary match")
 	)
 	flag.Parse()
 
@@ -195,6 +225,68 @@ func main() {
 		if agentCfg, ok := cfg.Agents[kind.String()]; ok && agentCfg.Delay != nil {
 			effectiveDelay = *agentCfg.Delay
 		}
+	}
+
+	// Resolve effective AFK.
+	var afkFromFlag, afkIdleFromFlag bool
+	flag.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "afk":
+			afkFromFlag = true
+		case "afk-idle":
+			afkIdleFromFlag = true
+		}
+	})
+
+	effectiveAfk := cfg.Defaults.Afk
+	effectiveAfkIdle := cfg.Defaults.AfkIdle
+	if agentCfg, ok := cfg.Agents[kind.String()]; ok {
+		if !afkFromFlag && agentCfg.Afk != nil {
+			effectiveAfk = *agentCfg.Afk
+		}
+		if !afkIdleFromFlag && agentCfg.AfkIdle != nil {
+			effectiveAfkIdle = *agentCfg.AfkIdle
+		}
+	}
+	if afkFromFlag {
+		effectiveAfk = *afk
+	}
+	if afkIdleFromFlag {
+		effectiveAfkIdle = *afkIdle
+	}
+	if effectiveAfkIdle <= 0 {
+		effectiveAfkIdle = 10 * time.Minute
+	}
+
+	// Resolve effective fuzzy.
+	var fuzzyFromFlag, fuzzyStableFromFlag bool
+	flag.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "fuzzy":
+			fuzzyFromFlag = true
+		case "fuzzy-stable":
+			fuzzyStableFromFlag = true
+		}
+	})
+
+	effectiveFuzzy := cfg.Defaults.Fuzzy
+	effectiveFuzzyStable := cfg.Defaults.FuzzyStable
+	if agentCfg, ok := cfg.Agents[kind.String()]; ok {
+		if !fuzzyFromFlag && agentCfg.Fuzzy != nil {
+			effectiveFuzzy = *agentCfg.Fuzzy
+		}
+		if !fuzzyStableFromFlag && agentCfg.FuzzyStable != nil {
+			effectiveFuzzyStable = *agentCfg.FuzzyStable
+		}
+	}
+	if fuzzyFromFlag {
+		effectiveFuzzy = *fuzzy
+	}
+	if fuzzyStableFromFlag {
+		effectiveFuzzyStable = *fuzzyStable
+	}
+	if effectiveFuzzyStable <= 0 {
+		effectiveFuzzyStable = 3 * time.Second
 	}
 
 	// Start logger
@@ -307,17 +399,21 @@ func main() {
 
 	// Run proxy
 	pr := proxy.New(proxy.Config{
-		PTY:       p,
-		RuleChain: chain,
-		Memory:    memory.New(),
-		StatusBar: sb,
-		Log:       log,
-		Term:      t,
-		Screen:    scr,
-		AgentKind: kind,
-		Delay:     effectiveDelay,
-		Enabled:   cfg.Defaults.Enabled,
-		DryRun:    *dryRun,
+		PTY:        p,
+		RuleChain:  chain,
+		Memory:     memory.New(),
+		StatusBar:  sb,
+		Log:        log,
+		Term:       t,
+		Screen:     scr,
+		AgentKind:  kind,
+		Delay:      effectiveDelay,
+		Enabled:    cfg.Defaults.Enabled,
+		DryRun:     *dryRun,
+		AfkEnabled: effectiveAfk,
+		AfkIdle:    effectiveAfkIdle,
+		FuzzyEnabled: effectiveFuzzy,
+		FuzzyStable:  effectiveFuzzyStable,
 	})
 
 	if err := pr.Run(); err != nil {

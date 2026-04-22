@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/host452b/yoyo/internal/config"
 )
@@ -145,5 +146,135 @@ func TestLoadRequired_ExistingFile_Works(t *testing.T) {
 	}
 	if cfg.Defaults.Delay != 2 {
 		t.Errorf("delay = %d, want 2", cfg.Defaults.Delay)
+	}
+}
+
+func TestLoad_AfkDefaultsOff(t *testing.T) {
+	path := writeConfig(t, "")
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Defaults.Afk {
+		t.Error("default afk = true, want false")
+	}
+	if cfg.Defaults.AfkIdle != 10*time.Minute {
+		t.Errorf("default afk_idle = %v, want 10m", cfg.Defaults.AfkIdle)
+	}
+}
+
+func TestLoad_AfkExplicit(t *testing.T) {
+	path := writeConfig(t, `
+[defaults]
+afk      = true
+afk_idle = "2m"
+`)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Defaults.Afk {
+		t.Error("afk = false, want true")
+	}
+	if cfg.Defaults.AfkIdle != 2*time.Minute {
+		t.Errorf("afk_idle = %v, want 2m", cfg.Defaults.AfkIdle)
+	}
+}
+
+func TestLoad_AfkIdle_Negative_ReturnsError(t *testing.T) {
+	path := writeConfig(t, `
+[defaults]
+afk_idle = "-30s"
+`)
+	if _, err := config.Load(path); err == nil {
+		t.Error("expected error for negative afk_idle, got nil")
+	}
+}
+
+func TestLoad_AgentAfkOverride(t *testing.T) {
+	path := writeConfig(t, `
+[agents.claude]
+afk      = true
+afk_idle = "3m"
+`)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ac := cfg.Agents["claude"]
+	if ac.Afk == nil || !*ac.Afk {
+		t.Error("claude.afk should be explicitly true")
+	}
+	if ac.AfkIdle == nil || *ac.AfkIdle != 3*time.Minute {
+		t.Errorf("claude.afk_idle = %v, want 3m", *ac.AfkIdle)
+	}
+}
+
+func TestLoad_AgentAfkOmitted_Nil(t *testing.T) {
+	path := writeConfig(t, `
+[agents.claude]
+delay = 1
+`)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ac := cfg.Agents["claude"]
+	if ac.Afk != nil {
+		t.Error("omitted afk should parse as nil (inherit)")
+	}
+	if ac.AfkIdle != nil {
+		t.Error("omitted afk_idle should parse as nil (inherit)")
+	}
+}
+
+func TestLoad_FuzzyDefaultsOff(t *testing.T) {
+	path := writeConfig(t, "")
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Defaults.Fuzzy {
+		t.Error("default fuzzy = true, want false")
+	}
+	if cfg.Defaults.FuzzyStable != 3*time.Second {
+		t.Errorf("default fuzzy_stable = %v, want 3s", cfg.Defaults.FuzzyStable)
+	}
+}
+
+func TestLoad_FuzzyExplicit(t *testing.T) {
+	path := writeConfig(t, `
+[defaults]
+fuzzy        = true
+fuzzy_stable = "5s"
+`)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Defaults.Fuzzy {
+		t.Error("fuzzy = false, want true")
+	}
+	if cfg.Defaults.FuzzyStable != 5*time.Second {
+		t.Errorf("fuzzy_stable = %v, want 5s", cfg.Defaults.FuzzyStable)
+	}
+}
+
+func TestLoad_AgentFuzzyOverride(t *testing.T) {
+	path := writeConfig(t, `
+[agents.cursor]
+fuzzy        = true
+fuzzy_stable = "2s"
+`)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ac := cfg.Agents["cursor"]
+	if ac.Fuzzy == nil || !*ac.Fuzzy {
+		t.Error("cursor.fuzzy should be explicitly true")
+	}
+	if ac.FuzzyStable == nil || *ac.FuzzyStable != 2*time.Second {
+		t.Errorf("cursor.fuzzy_stable = %v, want 2s", ac.FuzzyStable)
 	}
 }

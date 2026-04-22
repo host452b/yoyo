@@ -38,6 +38,12 @@ type Config struct {
 	Delay     int  // seconds
 	Enabled   bool
 	DryRun    bool
+
+	AfkEnabled bool
+	AfkIdle    time.Duration
+
+	FuzzyEnabled bool
+	FuzzyStable  time.Duration
 }
 
 // Proxy is the coordinator that routes bytes between stdin, child PTY, and stdout.
@@ -149,6 +155,58 @@ func (p *Proxy) Run() error {
 	var prefixTimerCh <-chan time.Time
 	prefixActive := false
 
+	afkEnabled := cfg.AfkEnabled
+	var afkIdleTimer *time.Timer
+	var afkIdleTimerCh <-chan time.Time
+	var afkDeadline time.Time    // zero = idle timer inactive
+	var afkNudgedUntil time.Time // status-bar flash window after a fire
+
+	armAfk := func() {
+		if !afkEnabled || cfg.AfkIdle <= 0 {
+			afkDeadline = time.Time{}
+			return
+		}
+		if afkIdleTimer != nil {
+			afkIdleTimer.Stop()
+		}
+		afkIdleTimer = time.NewTimer(cfg.AfkIdle)
+		afkIdleTimerCh = afkIdleTimer.C
+		afkDeadline = time.Now().Add(cfg.AfkIdle)
+	}
+	stopAfk := func() {
+		if afkIdleTimer != nil {
+			afkIdleTimer.Stop()
+		}
+		afkIdleTimer = nil
+		afkIdleTimerCh = nil
+		afkDeadline = time.Time{}
+	}
+	armAfk()
+
+	fuzzyEnabled := cfg.FuzzyEnabled
+	var fuzzyStableTimer *time.Timer
+	var fuzzyStableTimerCh <-chan time.Time
+	var fuzzyLastHash string
+
+	armFuzzyStable := func() {
+		if !fuzzyEnabled || cfg.FuzzyStable <= 0 {
+			return
+		}
+		if fuzzyStableTimer != nil {
+			fuzzyStableTimer.Stop()
+		}
+		fuzzyStableTimer = time.NewTimer(cfg.FuzzyStable)
+		fuzzyStableTimerCh = fuzzyStableTimer.C
+	}
+	stopFuzzy := func() {
+		if fuzzyStableTimer != nil {
+			fuzzyStableTimer.Stop()
+		}
+		fuzzyStableTimer = nil
+		fuzzyStableTimerCh = nil
+		fuzzyLastHash = ""
+	}
+
 	// Rebuild rule chain when agent kind is resolved
 	chain := cfg.RuleChain
 
@@ -176,9 +234,58 @@ func (p *Proxy) Run() error {
 				if prefixTimer != nil {
 					prefixTimer.Stop()
 				}
+				stopAfk()
+				stopFuzzy()
 				closeDone()
 				return nil
 			}
+			// Handle Ctrl+Y a / Ctrl+Y f inline (rather than inside handlePrefix)
+			// because AFK and fuzzy state are local to Run. Covers two scenarios:
+			//   (A) "\x19<letter>" arrives as one chunk from stdin
+			//   (B) "\x19" then "<letter>" arrive as separate chunks (prefixActive=true)
+			var toggleCmd byte
+			switch {
+			case len(data) >= 2 && data[0] == prefixByte && (data[1] == 'a' || data[1] == 'f'):
+				toggleCmd = data[1]
+				data = data[2:]
+			case prefixActive && len(data) > 0 && (data[0] == 'a' || data[0] == 'f'):
+				toggleCmd = data[0]
+				data = data[1:]
+			}
+			if toggleCmd != 0 {
+				prefixActive = false
+				cfg.StatusBar.SetPrefix(false)
+				if prefixTimer != nil {
+					prefixTimer.Stop()
+					prefixTimer = nil
+					prefixTimerCh = nil
+				}
+				switch toggleCmd {
+				case 'a':
+					afkEnabled = !afkEnabled
+					if afkEnabled {
+						armAfk()
+					} else {
+						stopAfk()
+					}
+				case 'f':
+					fuzzyEnabled = !fuzzyEnabled
+					if !fuzzyEnabled {
+						stopFuzzy()
+					} else {
+						// Re-enable: prime hash from current screen and arm the
+						// stability timer immediately, so a screen that was
+						// already stable at toggle time still gets evaluated.
+						fuzzyLastHash = detector.HashBody(cfg.Screen.Text())
+						armFuzzyStable()
+					}
+				}
+				stdout.Write(cfg.StatusBar.WrapFrame([]byte{}))
+				if len(data) == 0 {
+					continue
+				}
+			}
+
 			data = p.handlePrefix(data, &prefixActive, &prefixTimer, &prefixTimerCh,
 				&enabled, &delaySecs, &approvalTimer, &timerCh, cfg, stdout)
 
@@ -197,6 +304,11 @@ func (p *Proxy) Run() error {
 				cfg.StatusBar.SetCountdown(-1)
 			}
 
+			if afkIdleTimer != nil {
+				afkIdleTimer.Reset(cfg.AfkIdle)
+				afkDeadline = time.Now().Add(cfg.AfkIdle)
+			}
+
 			cfg.PTY.Write(data)
 
 		case data, ok := <-outputCh:
@@ -207,12 +319,26 @@ func (p *Proxy) Run() error {
 				if prefixTimer != nil {
 					prefixTimer.Stop()
 				}
+				stopAfk()
+				stopFuzzy()
 				closeDone()
 				return nil
 			}
 
 			cfg.Screen.Feed(data)
+			if afkIdleTimer != nil {
+				afkIdleTimer.Reset(cfg.AfkIdle)
+				afkDeadline = time.Now().Add(cfg.AfkIdle)
+			}
 			text := cfg.Screen.Text()
+
+			if fuzzyEnabled {
+				h := detector.HashBody(text)
+				if h != fuzzyLastHash {
+					fuzzyLastHash = h
+					armFuzzyStable()
+				}
+			}
 
 			// Try to resolve unknown agent from screen during first 10 frames
 			if agentKind == agent.KindUnknown && frames < 10 {
@@ -269,6 +395,17 @@ func (p *Proxy) Run() error {
 				cfg.StatusBar.SetCountdown(remaining)
 			}
 
+			if afkEnabled && !afkDeadline.IsZero() {
+				remaining := int(time.Until(afkDeadline).Seconds() + 0.5)
+				if remaining < 0 {
+					remaining = 0
+				}
+				nudged := time.Now().Before(afkNudgedUntil)
+				cfg.StatusBar.SetAfk(true, remaining, nudged)
+			} else {
+				cfg.StatusBar.SetAfk(false, 0, false)
+			}
+
 			out := cfg.StatusBar.WrapFrame(data)
 			stdout.Write(out)
 
@@ -293,6 +430,65 @@ func (p *Proxy) Run() error {
 			prefixActive = false
 			cfg.StatusBar.SetPrefix(false)
 			cfg.PTY.Write([]byte{prefixByte})
+
+		case <-afkIdleTimerCh:
+			afkIdleTimerCh = nil
+			afkIdleTimer = nil
+			if cfg.DryRun {
+				if cfg.Log != nil {
+					cfg.Log.Infof("afk: would send y + continue")
+				}
+			} else {
+				if _, err := cfg.PTY.Write([]byte("y\r")); err != nil && cfg.Log != nil {
+					cfg.Log.Errorf("afk: failed to send y: %v", err)
+				}
+				// Blocks the select for 200ms once per AFK fire (~1 time per AfkIdle
+				// window). Accepted over a second timer: by construction the loop was
+				// idle when we got here, and buffered channels absorb arrivals.
+				time.Sleep(200 * time.Millisecond)
+				if _, err := cfg.PTY.Write([]byte("continue, Choose based on your project understanding.\r")); err != nil && cfg.Log != nil {
+					cfg.Log.Errorf("afk: failed to send continue: %v", err)
+				}
+			}
+			afkNudgedUntil = time.Now().Add(2 * time.Second)
+			armAfk()
+
+		case <-fuzzyStableTimerCh:
+			fuzzyStableTimerCh = nil
+			fuzzyStableTimer = nil
+			// Re-read the current text and run vocab match.
+			currentText := cfg.Screen.Text()
+			if !detector.FuzzyMatch(currentText) {
+				break
+			}
+			synth := &detector.MatchResult{
+				RuleName: "fuzzy",
+				Response: "\r",
+				Hash:     detector.HashBody(currentText),
+			}
+			if synth.Hash == approvedHash {
+				break // already handled
+			}
+			if cfg.Log != nil {
+				cfg.Log.Infof("fuzzy: match at stable-window expiry")
+			}
+			cfg.StatusBar.SetRule(synth.RuleName)
+			if cfg.Memory.Seen(synth.Hash) {
+				approvedHash = synth.Hash
+				sendApproval(synth, "fuzzy-seen-approval")
+			} else if delaySecs == 0 {
+				cfg.Memory.Record(synth.Hash)
+				approvedHash = synth.Hash
+				sendApproval(synth, "fuzzy-immediate-approval")
+			} else if lastResult == nil || lastResult.Hash != synth.Hash {
+				if approvalTimer != nil {
+					approvalTimer.Stop()
+				}
+				lastResult = synth
+				approvalTimer = time.NewTimer(time.Duration(delaySecs) * time.Second)
+				timerCh = approvalTimer.C
+				approvalDeadline = time.Now().Add(time.Duration(delaySecs) * time.Second)
+			}
 		}
 	}
 }

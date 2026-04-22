@@ -34,6 +34,9 @@ type StatusBar struct {
 	midSeq    bool
 	prefix    bool // true while waiting for Ctrl+Y command byte
 	dryRun    bool
+	afkEnabled bool
+	afkRemain  int // seconds remaining
+	afkNudged  bool
 	buf       []byte // reusable output buffer
 }
 
@@ -72,6 +75,16 @@ func (sb *StatusBar) SetRule(rule string) {
 func (sb *StatusBar) SetCountdown(secs int) {
 	sb.mu.Lock()
 	sb.countdown = secs
+	sb.mu.Unlock()
+}
+
+// SetAfk updates the AFK segment. When enabled=false no segment is rendered.
+// nudgedFlash=true shows "afk nudged" instead of the mm:ss countdown.
+func (sb *StatusBar) SetAfk(enabled bool, remainingSecs int, nudgedFlash bool) {
+	sb.mu.Lock()
+	sb.afkEnabled = enabled
+	sb.afkRemain = remainingSecs
+	sb.afkNudged = nudgedFlash
 	sb.mu.Unlock()
 }
 
@@ -165,26 +178,40 @@ func (sb *StatusBar) labelText() string {
 		return " [yoyo: ^Y …] "
 	}
 	if !sb.enabled {
+		base := " [yoyo: off"
 		if sb.dryRun {
-			return " [yoyo: dry off] "
+			base = " [yoyo: dry off"
 		}
-		return " [yoyo: off] "
+		return base + sb.afkSuffix() + "] "
 	}
 	mode := "on"
 	if sb.dryRun {
 		mode = "dry"
 	}
-	// Active countdown: show remaining seconds
-	if sb.countdown >= 0 {
-		if sb.rule == "" {
-			return fmt.Sprintf(" [yoyo: %s %ds] ", mode, sb.countdown)
-		}
-		return fmt.Sprintf(" [yoyo: %s %ds | %s] ", mode, sb.countdown, sb.rule)
+	var base string
+	switch {
+	case sb.countdown >= 0 && sb.rule != "":
+		base = fmt.Sprintf(" [yoyo: %s %ds | %s", mode, sb.countdown, sb.rule)
+	case sb.countdown >= 0:
+		base = fmt.Sprintf(" [yoyo: %s %ds", mode, sb.countdown)
+	case sb.rule != "":
+		base = fmt.Sprintf(" [yoyo: %s %ds | %s", mode, sb.delaySecs, sb.rule)
+	default:
+		base = fmt.Sprintf(" [yoyo: %s %ds", mode, sb.delaySecs)
 	}
-	if sb.rule == "" {
-		return fmt.Sprintf(" [yoyo: %s %ds] ", mode, sb.delaySecs)
+	return base + sb.afkSuffix() + "] "
+}
+
+func (sb *StatusBar) afkSuffix() string {
+	if !sb.afkEnabled {
+		return ""
 	}
-	return fmt.Sprintf(" [yoyo: %s %ds | %s] ", mode, sb.delaySecs, sb.rule)
+	if sb.afkNudged {
+		return " | afk nudged"
+	}
+	m := sb.afkRemain / 60
+	s := sb.afkRemain % 60
+	return fmt.Sprintf(" | afk %d:%02d", m, s)
 }
 
 func overlayAt(row, col uint16, color, text string) []byte {

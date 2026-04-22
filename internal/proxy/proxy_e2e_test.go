@@ -509,3 +509,265 @@ func TestProxy_E2E_PrefixKeyUnknown(t *testing.T) {
 		// still running — pass
 	}
 }
+
+// makeProxyWithAfk wires up a proxy with AFK enabled and a short idle.
+func makeProxyWithAfk(t *testing.T, idle time.Duration, dryRun bool) (*proxy.Proxy, *fakePTY, *fakeStdin) {
+	t.Helper()
+	log, err := logger.New(t.TempDir() + "/test.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { log.Close() })
+	pty := newFakePTY()
+	stdin := newFakeStdin()
+	scr := screen.New(80, 24)
+	sb := statusbar.New(24, 80, true, 0)
+	chain := detector.RuleChain{agent.KindClaude.Detector()}
+	pr := proxy.New(proxy.Config{
+		PTY:        pty,
+		Stdin:      stdin,
+		Stdout:     io.Discard,
+		RuleChain:  chain,
+		Memory:     memory.New(),
+		StatusBar:  sb,
+		Log:        log,
+		Term:       term.NewNoOp(),
+		Screen:     scr,
+		AgentKind:  agent.KindClaude,
+		Delay:      0,
+		Enabled:    true,
+		DryRun:     dryRun,
+		AfkEnabled: true,
+		AfkIdle:    idle,
+	})
+	return pr, pty, stdin
+}
+
+// 17. AFK fires after idle with y\r + continue message
+func TestProxy_E2E_AfkFires(t *testing.T) {
+	pr, pty, stdin := makeProxyWithAfk(t, 300*time.Millisecond, false)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	waitWritten(t, pty, "y\r", 1*time.Second)
+	waitWritten(t, pty, "continue, Choose based on your project understanding.\r", 1*time.Second)
+
+	pty.close()
+	<-done
+}
+
+// 18. AFK rearms and fires a second time while still idle
+func TestProxy_E2E_AfkRearmsAndFiresTwice(t *testing.T) {
+	pr, pty, stdin := makeProxyWithAfk(t, 300*time.Millisecond, false)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	waitWritten(t, pty, "continue, Choose based on your project understanding.\r", 1*time.Second)
+
+	// Count how many "continue, ..." strings appear after the second idle window
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if strings.Count(pty.written(), "continue, Choose based on your project understanding.\r") >= 2 {
+			pty.close()
+			<-done
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Errorf("expected 2 AFK fires; got written=%q", pty.written())
+	pty.close()
+	<-done
+}
+
+// 19. Output from child during idle window keeps resetting the AFK timer
+func TestProxy_E2E_AfkResetOnOutput(t *testing.T) {
+	pr, pty, stdin := makeProxyWithAfk(t, 300*time.Millisecond, false)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	// Keep pumping output every 100 ms for ~600 ms (>2× the idle window)
+	stop := make(chan struct{})
+	go func() {
+		tk := time.NewTicker(100 * time.Millisecond)
+		defer tk.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-tk.C:
+				pty.send(".")
+			}
+		}
+	}()
+
+	ensureNotWritten(t, pty, "y\r", 600*time.Millisecond)
+	close(stop)
+	pty.close()
+	<-done
+}
+
+// 20. User stdin activity during idle window keeps resetting the AFK timer
+func TestProxy_E2E_AfkResetOnUserInput(t *testing.T) {
+	pr, pty, stdin := makeProxyWithAfk(t, 300*time.Millisecond, false)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	stop := make(chan struct{})
+	go func() {
+		tk := time.NewTicker(100 * time.Millisecond)
+		defer tk.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-tk.C:
+				stdin.send("x")
+			}
+		}
+	}()
+
+	ensureNotWritten(t, pty, "y\r", 600*time.Millisecond)
+	close(stop)
+	pty.close()
+	<-done
+}
+
+// 21. AFK in dry-run mode must log the intent but NOT write to the PTY
+func TestProxy_E2E_AfkDryRun(t *testing.T) {
+	pr, pty, stdin := makeProxyWithAfk(t, 200*time.Millisecond, true /*dryRun*/)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	// Wait long enough for a real fire to have happened
+	time.Sleep(500 * time.Millisecond)
+
+	if strings.Contains(pty.written(), "y\r") ||
+		strings.Contains(pty.written(), "continue, Choose") {
+		t.Errorf("dry-run wrote to PTY: %q", pty.written())
+	}
+
+	pty.close()
+	<-done
+}
+
+// 22. Ctrl+Y a disables AFK at runtime; second Ctrl+Y a re-enables it
+func TestProxy_E2E_AfkToggleViaPrefix(t *testing.T) {
+	pr, pty, stdin := makeProxyWithAfk(t, 250*time.Millisecond, false)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	// Toggle OFF before any fire
+	stdin.send("\x19a")
+	time.Sleep(50 * time.Millisecond)
+
+	// No fire expected for >2× idle duration
+	ensureNotWritten(t, pty, "y\r", 700*time.Millisecond)
+
+	// Toggle ON — fire should occur within one idle window
+	stdin.send("\x19a")
+	waitWritten(t, pty, "y\r", 1*time.Second)
+
+	pty.close()
+	<-done
+}
+
+// makeProxyWithFuzzy wires up a proxy with fuzzy enabled and a short stable window.
+func makeProxyWithFuzzy(t *testing.T, stable time.Duration, dryRun bool) (*proxy.Proxy, *fakePTY, *fakeStdin) {
+	t.Helper()
+	log, err := logger.New(t.TempDir() + "/test.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { log.Close() })
+	pty := newFakePTY()
+	stdin := newFakeStdin()
+	scr := screen.New(80, 24)
+	sb := statusbar.New(24, 80, true, 0)
+	chain := detector.RuleChain{agent.KindClaude.Detector()} // claude detector won't match our test prompts
+	pr := proxy.New(proxy.Config{
+		PTY:          pty,
+		Stdin:        stdin,
+		Stdout:       io.Discard,
+		RuleChain:    chain,
+		Memory:       memory.New(),
+		StatusBar:    sb,
+		Log:          log,
+		Term:         term.NewNoOp(),
+		Screen:       scr,
+		AgentKind:    agent.KindClaude,
+		Delay:        0,
+		Enabled:      true,
+		DryRun:       dryRun,
+		FuzzyEnabled: true,
+		FuzzyStable:  stable,
+	})
+	return pr, pty, stdin
+}
+
+// 23. Fuzzy fires after stable window when last 15 lines match the vocab
+func TestProxy_E2E_FuzzyFires(t *testing.T) {
+	pr, pty, stdin := makeProxyWithFuzzy(t, 200*time.Millisecond, false)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	// Send a prompt that the built-in detectors will NOT match but fuzzy will.
+	pty.send("deploying to prod\r\ncontinue? (y/n) ")
+
+	// Fuzzy stable window is 200 ms; approval delay is 0; expect \r within 1 s.
+	waitWritten(t, pty, "\r", 1*time.Second)
+
+	pty.close()
+	<-done
+}
+
+// 24. Fuzzy does NOT fire when no vocab marker is present
+func TestProxy_E2E_FuzzyNoMatch(t *testing.T) {
+	pr, pty, stdin := makeProxyWithFuzzy(t, 150*time.Millisecond, false)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	pty.send("building... done\r\nwaiting... ")
+	ensureNotWritten(t, pty, "\r", 400*time.Millisecond)
+
+	pty.close()
+	<-done
+}
+
+// 25. Fuzzy in dry-run does not write to PTY
+func TestProxy_E2E_FuzzyDryRun(t *testing.T) {
+	pr, pty, stdin := makeProxyWithFuzzy(t, 150*time.Millisecond, true)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	pty.send("continue (y/n) ")
+	time.Sleep(400 * time.Millisecond)
+
+	if len(pty.written()) != 0 {
+		t.Errorf("dry-run wrote to PTY: %q", pty.written())
+	}
+
+	pty.close()
+	<-done
+}
+
+// 26. Ctrl+Y f disables fuzzy at runtime; second Ctrl+Y f re-enables it
+func TestProxy_E2E_FuzzyToggleViaPrefix(t *testing.T) {
+	pr, pty, stdin := makeProxyWithFuzzy(t, 150*time.Millisecond, false)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	// Toggle fuzzy OFF
+	stdin.send("\x19f")
+	time.Sleep(50 * time.Millisecond)
+
+	// Send a y/n prompt — fuzzy would normally fire, but toggled off → no \r
+	pty.send("continue (y/n) ")
+	ensureNotWritten(t, pty, "\r", 400*time.Millisecond)
+
+	// Toggle fuzzy back ON — should now fire within a stable window
+	stdin.send("\x19f")
+	waitWritten(t, pty, "\r", 1*time.Second)
+
+	pty.close()
+	<-done
+}
