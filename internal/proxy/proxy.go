@@ -155,7 +155,6 @@ func (p *Proxy) Run() error {
 	afkEnabled := cfg.AfkEnabled
 	var afkIdleTimer *time.Timer
 	var afkIdleTimerCh <-chan time.Time
-	var afkNudgedUntil time.Time // status-bar flash window; used by later tasks
 
 	armAfk := func() {
 		if !afkEnabled || cfg.AfkIdle <= 0 {
@@ -334,13 +333,14 @@ func (p *Proxy) Run() error {
 				if _, err := cfg.PTY.Write([]byte("y\r")); err != nil && cfg.Log != nil {
 					cfg.Log.Errorf("afk: failed to send y: %v", err)
 				}
+				// Blocks the select for 200ms once per AFK fire (~1 time per AfkIdle
+				// window). Accepted over a second timer: by construction the loop was
+				// idle when we got here, and buffered channels absorb arrivals.
 				time.Sleep(200 * time.Millisecond)
 				if _, err := cfg.PTY.Write([]byte("continue, Choose based on your project understanding.\r")); err != nil && cfg.Log != nil {
 					cfg.Log.Errorf("afk: failed to send continue: %v", err)
 				}
 			}
-			afkNudgedUntil = time.Now().Add(2 * time.Second)
-			_ = afkNudgedUntil // consumed by Task 11 (status-bar flash)
 			armAfk()
 		}
 	}
