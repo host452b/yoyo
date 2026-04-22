@@ -136,12 +136,46 @@ yoyo -delay 5 codex
 
 ## Supported Agents
 
-| Agent | Command | Detection method |
-|-------|---------|-----------------|
-| Claude Code | `claude` | `───` bordered permission box + Yes/No options |
-| OpenAI Codex | `codex` | "Would you like to" / "needs your approval" + "Press enter to confirm" |
-| Cursor | `cursor`, `cursor-agent` | Box-drawn `┌─┐` prompt with `(y)` / `n)` options |
-| Unknown | any command | All three detectors run in parallel; agent auto-identified from screen within first 10 frames |
+yoyo ships with **three built-in detectors** that recognise the most common AI
+agent CLIs out of the box. For anything else, there are three progressively
+more general fallbacks you can layer on.
+
+### Built-in detectors (zero config)
+
+| Agent | Command | What yoyo looks for |
+|-------|---------|---------------------|
+| [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview) | `claude` | `───` bordered permission box + numbered `Yes` / `No` options |
+| [OpenAI Codex CLI](https://github.com/openai/codex) | `codex` | "Would you like to" / "needs your approval" headers + "Press enter to confirm or esc to cancel" footer |
+| [Cursor Agent](https://cursor.com/agents) | `cursor`, `cursor-agent` | `┌─┐` box-drawn prompts with `(y)` / `n)` options (both old box-internal layout and new box-above / options-below layout) |
+
+Running `yoyo claude` / `yoyo codex` / `yoyo cursor` picks the right detector
+automatically from the command name. If you launch via a wrapper script (or
+the command name doesn't match), yoyo auto-identifies the agent from banner
+text in the first 10 output frames — so e.g. `yoyo my-claude-wrapper.sh`
+also works.
+
+### Other agents — three layered fallbacks
+
+Any agent whose prompts don't match the built-in detectors can still be
+handled. Listed from most specific to most generic:
+
+1. **Custom regex rules** in `~/.config/yoyo/config.toml` — `[[rules]]` with a
+   `pattern` and `response`, evaluated before built-in detectors. Use this for
+   agents with a stable prompt shape that isn't covered upstream (aider,
+   goose, mentat, gemini-cli, devin, OpenHands, sweep, etc.).
+   See [Config File](#config-file) below.
+2. **Fuzzy fallback** (`-fuzzy`) — a narrow-vocabulary y/n detector that fires
+   when the screen is stable and contains an unambiguous marker like `(y/n)`,
+   `[Y/n]`, `yes/no`. Works for any agent whose prompt surfaces one of those
+   shapes without needing to know anything else about it.
+3. **AFK mode** (`-afk`) — a dumb idle timer. If the terminal is fully silent
+   for `-afk-idle` (default 10 min), yoyo injects `y` + Enter plus a generic
+   "continue" instruction. Last-resort escape hatch for unmatched prompts
+   during long unattended runs.
+
+Combine them freely: `yoyo -fuzzy -afk -afk-idle 5m my-agent` gives layered
+coverage — custom rules win if configured, then fuzzy within seconds, then
+AFK as the slow backstop.
 
 ---
 

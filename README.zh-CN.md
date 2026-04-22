@@ -134,12 +134,27 @@ yoyo -delay 5 codex
 
 ## 支持的 Agent
 
-| Agent | 命令 | 检测方式 |
+yoyo 自带**三个内置 detector**覆盖最常见的 AI agent CLI；超出这三个的，有三层逐级兜底机制可以叠加使用。
+
+### 内置 detector（零配置）
+
+| Agent | 命令 | 识别依据 |
 |-------|------|---------|
-| Claude Code | `claude` | `───` 包围的权限框 + Yes/No 选项 |
-| OpenAI Codex | `codex` | "Would you like to" / "needs your approval" + "Press enter to confirm" |
-| Cursor | `cursor`、`cursor-agent` | `┌─┐` 画框 + `(y)` / `n)` 选项 |
-| 未知 | 任意命令 | 三个 detector 并行跑；前 10 帧内根据屏幕内容自动识别 agent |
+| [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview) | `claude` | `───` 包围的权限框 + 编号式 `Yes` / `No` 选项 |
+| [OpenAI Codex CLI](https://github.com/openai/codex) | `codex` | "Would you like to" / "needs your approval" 开头 + "Press enter to confirm or esc to cancel" 结尾 |
+| [Cursor Agent](https://cursor.com/agents) | `cursor`、`cursor-agent` | `┌─┐` 画框 + `(y)` / `n)` 选项（兼容老式"全部在框内"和新式"命令在框内、选项在框外下方"两种布局） |
+
+`yoyo claude` / `yoyo codex` / `yoyo cursor` 会自动根据命令名选 detector。如果你是经包装脚本启动（或命令名不匹配），yoyo 会在前 10 帧输出里根据 banner 文本自动识别——所以 `yoyo my-claude-wrapper.sh` 也能跑。
+
+### 其他 agent——三层兜底
+
+没被内置 detector 覆盖的 agent 也能用，按"从具体到泛化"排序：
+
+1. **自定义 regex 规则**（在 `~/.config/yoyo/config.toml` 里写 `[[rules]]`，包含 `pattern` 和 `response`，优先于内置 detector 评估）。适用于 prompt 形状固定但上游没收录的 agent，如 aider、goose、mentat、gemini-cli、devin、OpenHands、sweep 等。详见下面的 [配置文件](#配置文件)。
+2. **Fuzzy 保底**（`-fuzzy`）——窄词表 y/n 检测，屏幕稳定 + 出现 `(y/n)` / `[Y/n]` / `yes/no` 这类明确标记时触发。对任意 agent 只要 prompt 里出现这些标记就能识别，不需要了解 agent 细节。
+3. **AFK 模式**（`-afk`）——无脑空闲计时。终端 `-afk-idle`（默认 10 分钟）完全静默后，yoyo 发 `y` + Enter + 一段通用"继续"指令。长时间无人值守跑任务时的最后一道逃生门。
+
+三层可以随意叠加：`yoyo -fuzzy -afk -afk-idle 5m my-agent` 能做到——自定义规则优先（如果配了），几秒内 fuzzy 兜一遍，10 分钟 AFK 再兜底。
 
 ---
 
