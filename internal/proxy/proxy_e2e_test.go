@@ -555,3 +555,26 @@ func TestProxy_E2E_AfkFires(t *testing.T) {
 	pty.close()
 	<-done
 }
+
+// 18. AFK rearms and fires a second time while still idle
+func TestProxy_E2E_AfkRearmsAndFiresTwice(t *testing.T) {
+	pr, pty, stdin := makeProxyWithAfk(t, 300*time.Millisecond, false)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	waitWritten(t, pty, "continue, Choose based on your project understanding.\r", 1*time.Second)
+
+	// Count how many "continue, ..." strings appear after the second idle window
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if strings.Count(pty.written(), "continue, Choose based on your project understanding.\r") >= 2 {
+			pty.close()
+			<-done
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Errorf("expected 2 AFK fires; got written=%q", pty.written())
+	pty.close()
+	<-done
+}
