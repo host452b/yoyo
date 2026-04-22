@@ -1,18 +1,30 @@
 ```
- ██    ██  ██████  ██    ██  ██████
-  ██  ██  ██    ██  ██  ██  ██    ██
-   ████   ██    ██   ████   ██    ██
-    ██    ██    ██    ██    ██    ██
-    ██     ██████     ██     ██████
+                  ╭───╮
+                  │ Y │
+                  ╰─┬─╯
+                    │
+               ╭────┴────╮
+               │  y o y o │
+               ╰────┬────╯
+                    │
+                  ╭─┴─╮
+                  │ ✓ │
+                  ╰───╯
 ```
 
 # yoyo
 
 > [English](README.md) · **简体中文**
 
+[![PyPI](https://img.shields.io/pypi/v/yoyo-cli.svg?label=pypi%20yoyo-cli)](https://pypi.org/project/yoyo-cli/)
+[![Release](https://img.shields.io/github/v/release/host452b/yoyo?label=github%20release)](https://github.com/host452b/yoyo/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#许可)
+
 **you only yes once** —— 自动批准 AI agent 权限提示的 PTY 代理。
 
 yoyo 坐在你的终端和 AI agent CLI（Claude Code、Codex、Cursor 等）之间，监听 agent 的输出，识别权限提示，在可配置的延迟之后自动发送确认按键——你不再需要盯着屏幕敲 `y`。
+
+**为什么需要它**：agent CLI 每条 shell 命令、文件编辑、网络调用都来问你一次"要不要继续"。长时间无人值守跑任务（`yoyo -afk claude`）时，yoyo 帮你自动"yes"识别到的 prompt，同时留 3 秒倒计时让你拦下看起来不对的那条。**删除类命令**（`rm -rf`、`DROP TABLE`、`kubectl delete`、`terraform destroy` 等）**不自动放行**——强制转手动。详见 [删除命令安全防护](#删除命令安全防护) 段。
 
 ---
 
@@ -81,8 +93,20 @@ sudo mv yoyo /usr/local/bin/
 ### 验证安装
 
 ```bash
-yoyo -h
+yoyo -v      # 打印已装版本，例如 "yoyo v2.2.4"
+yoyo -h      # 完整用法
 ```
+
+### 升级 / 卸载
+
+| 通过什么装的 | 升级命令 | 卸载命令 |
+|---|---|---|
+| `curl ... install.sh` | 重跑同一条 curl（自动覆盖） | `sudo rm /usr/local/bin/yoyo` |
+| `pip install yoyo-cli` | `pip install -U yoyo-cli` | `pip uninstall yoyo-cli` |
+| `go install` | `go install github.com/host452b/yoyo/cmd/yoyo@latest` | `rm "$(go env GOPATH)/bin/yoyo"` |
+| 源码构建 | `git pull && go build -o yoyo ./cmd/yoyo && sudo mv yoyo /usr/local/bin/` | `sudo rm /usr/local/bin/yoyo` |
+
+配置文件（`~/.config/yoyo/config.toml`）、日志（`~/.yoyo/yoyo.log`）、内存中的会话记忆都独立于二进制——升级永远不动它们，卸载也不会自动清。
 
 ---
 
@@ -372,15 +396,23 @@ tail -f ~/.yoyo/yoyo.log
 
 ## 安全
 
-### Prompt 注入
+### 内置防护（默认开启，除非显式关闭）
 
-yoyo 会自动批准匹配上 detector 规则的 prompt。如果 agent 处理的程序或文件恶意输出一段看起来像权限提示的文本，yoyo 可能会批准你本意没打算批准的操作。
+| 层 | 作用 | 关闭方式 |
+|---|---|---|
+| **删除命令防护**（默认开） | 屏幕上出现删除类命令（`rm -rf`、`git rm -r`、`git clean -f…`、`find -delete`、SQL 的 `DROP`/`TRUNCATE`、`kubectl delete`、`terraform destroy`、`docker/podman volume rm` / `system prune`）时拒绝自动批准，状态条变成 `danger: <片段>`。详见 [删除命令安全防护](#删除命令安全防护)。 | `-no-safety` |
+| **Config 文件权限检查** | 启动时如果 `~/.config/yoyo/config.toml` 可被 group 或 other 写入，stderr 发警告——可写的 config 意味着攻击者能塞 `pattern=".*" response="y\r"` 这种全通规则批准任何东西。 | `chmod 600 ~/.config/yoyo/config.toml`（消除警告） |
+| **批准延迟** | 默认 3 秒倒计时，期间按任意非 escape 键都能取消自动批准，留给你人眼检视。 | `-delay 0` |
+| **强杀逃生口** | `Ctrl+Y q` 或 500ms-1s 内连按 3 次 `Ctrl-C` → SIGKILL 子进程。针对 agent 自己把 Ctrl-C 处理卡死的情况。 | 总是开启 |
+| **会话去重** | 同一会话内相同 prompt 不会重复走 delay——"看过一次就算看过"的语义。 | 只在进程内，不跨会话持久化 |
 
-**缓解措施：**
+### Prompt 注入（残余风险）
 
-- 用 `-delay` 留一点检视时间。默认 3 秒，倒计时内按任意键都能取消。
-- agent 要处理不可信输入之前，`Ctrl+Y 0` 关掉 yoyo。
-- config 里的 `pattern` 规则越严越好——越宽泛注入面越大。
+即使开了上面这些防护，agent 处理的恶意程序或文件仍可能伪造"像权限提示"的文本，诱导 yoyo 批准你本意不想批准的操作。防护做了删除类的底线，其他注入点仍需注意：
+
+- agent 要处理不可信输入之前，`Ctrl+Y 0` 关掉 yoyo
+- `pattern` 规则越严越好——越宽泛注入面越大
+- 防护词表刻意保持窄（只覆盖删除类，**不**拦 `mkfs`/`dd`/`curl | sh`/fork bomb 这些——容器开发里常用）。要用 `-no-safety` 前先读一下 [internal/detector/danger.go](internal/detector/danger.go) 搞清楚放弃的是什么
 
 yoyo 是为你信任 agent 及其环境的开发工作流设计的，不是为对抗性环境设计的。
 

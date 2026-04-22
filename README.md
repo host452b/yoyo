@@ -1,20 +1,37 @@
 ```
- ██    ██  ██████  ██    ██  ██████
-  ██  ██  ██    ██  ██  ██  ██    ██
-   ████   ██    ██   ████   ██    ██
-    ██    ██    ██    ██    ██    ██
-    ██     ██████     ██     ██████
+                  ╭───╮
+                  │ Y │
+                  ╰─┬─╯
+                    │
+               ╭────┴────╮
+               │  y o y o │
+               ╰────┬────╯
+                    │
+                  ╭─┴─╮
+                  │ ✓ │
+                  ╰───╯
 ```
 
 # yoyo
 
 > **English** · [简体中文](README.zh-CN.md)
 
+[![PyPI](https://img.shields.io/pypi/v/yoyo-cli.svg?label=pypi%20yoyo-cli)](https://pypi.org/project/yoyo-cli/)
+[![Release](https://img.shields.io/github/v/release/host452b/yoyo?label=github%20release)](https://github.com/host452b/yoyo/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#license)
+
 **you only yes once** — a PTY proxy that auto-approves AI agent permission prompts.
 
 yoyo sits between your terminal and an AI agent CLI (Claude Code, Codex, Cursor, …).
 It watches the agent's output, detects permission prompts, and automatically sends the
 confirmation keystroke after a configurable delay — so you don't have to babysit it.
+
+**Why it exists.** Agentic CLIs ask you to confirm every shell command, file edit, or
+network call. On a long unattended run (`yoyo -afk claude`), yoyo pipes back "yes" for
+recognised prompts while a 3-second countdown lets you intercept anything that looks
+wrong. A deletion-command safety guard refuses to auto-approve destructive shapes
+(`rm -rf`, `DROP TABLE`, `kubectl delete`, `terraform destroy`, …). See the
+[Safety guard](#safety-guard-deletion-commands) section for the full list.
 
 ---
 
@@ -85,8 +102,20 @@ sudo mv yoyo /usr/local/bin/
 ### Verify
 
 ```bash
-yoyo -h
+yoyo -v      # prints the installed version, e.g. "yoyo v2.2.4"
+yoyo -h      # full usage
 ```
+
+### Upgrade / Uninstall
+
+| Installed via | Upgrade | Uninstall |
+|---|---|---|
+| `curl ... install.sh` | rerun the same curl command (overwrites in place) | `sudo rm /usr/local/bin/yoyo` |
+| `pip install yoyo-cli` | `pip install -U yoyo-cli` | `pip uninstall yoyo-cli` |
+| `go install` | `go install github.com/host452b/yoyo/cmd/yoyo@latest` | `rm "$(go env GOPATH)/bin/yoyo"` |
+| Source build | `git pull && go build -o yoyo ./cmd/yoyo && sudo mv yoyo /usr/local/bin/` | `sudo rm /usr/local/bin/yoyo` |
+
+The config (`~/.config/yoyo/config.toml`), log (`~/.yoyo/yoyo.log`), and in-process session memory are all independent of the binary — upgrading never touches them, uninstalling doesn't auto-remove them.
 
 ---
 
@@ -421,17 +450,33 @@ Requirements: Go 1.21+ to build from source.
 
 ## Security
 
-### Prompt injection
+### Built-in protections (always on unless explicitly disabled)
 
-yoyo auto-approves prompts that match its detector rules. A malicious program or file processed by the wrapped agent could deliberately emit output that looks like a permission prompt, causing yoyo to approve an action you did not intend.
+| Layer | What it does | Opt-out |
+|---|---|---|
+| **Safety guard** (default ON) | Refuses to auto-approve when the screen shows a deletion-class command (`rm -rf`, `git rm -r`, `git clean -f…`, `find -delete`, SQL `DROP` / `TRUNCATE`, `kubectl delete`, `terraform destroy`, `docker/podman volume rm` / `system prune`). Status bar flips to `danger: <snippet>`. See [Safety guard](#safety-guard-deletion-commands). | `-no-safety` |
+| **Config file perm check** | Warns to stderr at startup if `~/.config/yoyo/config.toml` is group- or world-writable — a writable config lets an attacker inject `[[rules]]` with `pattern=".*" response="y\r"` and auto-approve anything. | `chmod 600 ~/.config/yoyo/config.toml` to suppress the warning |
+| **Approval delay** | Default 3 s countdown during which any non-escape key cancels the pending auto-approve. Lets you review before yoyo acts. | `-delay 0` |
+| **Force-kill escape hatch** | `Ctrl+Y q`, or 3× `Ctrl-C` within 1 s, SIGKILL's the child — for agents that wedge their own Ctrl-C handling. | always on |
+| **Session memory dedup** | Identical prompts across a session aren't re-approved with delay — ensures once-reviewed gets one-reviewed semantics. | in-process only (no persistence) |
 
-**Mitigations:**
+### Prompt injection (residual risk)
 
-- Use the `-delay` option to give yourself time to review before approval is sent. The default is 3 seconds; press any key to cancel.
+A malicious program or file processed by the wrapped agent could emit output
+that looks like a permission prompt, causing yoyo to approve an action you did
+not intend. The safety guard above covers the common destructive shapes; other
+risks remain:
+
 - Disable yoyo (`Ctrl+Y 0`) when the agent is about to process untrusted input.
-- Keep custom `pattern` rules in your config as specific as possible — overly broad patterns increase the injection surface.
+- Keep custom `pattern` rules in your config as specific as possible — overly
+  broad patterns increase the injection surface.
+- The safety guard's vocabulary is narrow (deletion-class only — no `mkfs` /
+  `dd` / `curl | sh` / fork bombs, since those are routine in container dev).
+  Pass `-no-safety` only when you've read [internal/detector/danger.go](internal/detector/danger.go)
+  and understand what you're giving up.
 
-yoyo is designed for development workflows where you trust the agent and its environment. It is not designed to be safe in adversarial environments.
+yoyo is designed for development workflows where you trust the agent and its
+environment. It is not designed to be safe in adversarial environments.
 
 ---
 
