@@ -46,6 +46,17 @@ func (c Cursor) Detect(screenText string) *MatchResult {
 			cleaned = append(cleaned, l)
 		}
 	}
+	// Newer Cursor Agent layout renders the command inside the box and the
+	// approval question/options below it. Include post-box lines so the (y)/n)
+	// markers are visible to the body check.
+	for _, line := range lines[bottomIdx+1:] {
+		l := strings.TrimSpace(line)
+		l = strings.ReplaceAll(l, "→", "")
+		l = strings.TrimSpace(l)
+		if l != "" {
+			cleaned = append(cleaned, l)
+		}
+	}
 	body := strings.Join(cleaned, "\n")
 
 	if !strings.Contains(body, "(y)") || !strings.Contains(body, "n)") {

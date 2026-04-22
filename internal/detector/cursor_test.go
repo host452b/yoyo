@@ -82,3 +82,32 @@ func TestCursor_DefaultResponse(t *testing.T) {
 		t.Errorf("Response = %q, want \\r", r.Response)
 	}
 }
+
+// TestCursor_PromptBelowCommandBox covers the layout where the command sits
+// inside the box and the approval question/options render below it.
+func TestCursor_PromptBelowCommandBox(t *testing.T) {
+	d := detector.Cursor{}
+	screen := cursorBox([]string{"$  lspci -nnk -s 01:00.0 in ."}) +
+		"\n" +
+		"  Run this command?\n" +
+		"  Not in allowlist: lspci -nnk -s 01:00.0\n" +
+		"   → Run (once) (y)\n" +
+		"     Skip (esc or n)\n"
+	r := d.Detect(screen)
+	if r == nil {
+		t.Fatal("expected detection for prompt rendered below command box")
+	}
+	if r.Response != "\r" {
+		t.Errorf("Response = %q, want \\r", r.Response)
+	}
+}
+
+// TestCursor_CommandBoxWithoutPromptIsIgnored guards against false positives:
+// a command box with no approval UI below it must not match.
+func TestCursor_CommandBoxWithoutPromptIsIgnored(t *testing.T) {
+	d := detector.Cursor{}
+	screen := cursorBox([]string{"$ ls"}) + "\nsome output line\nanother line\n"
+	if d.Detect(screen) != nil {
+		t.Error("should not detect without (y)/(n) markers below box")
+	}
+}
