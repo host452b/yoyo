@@ -6,28 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.2.2] — 2026-04-22
 
-### Build / CI
-
-- Add GitHub Actions **release** workflow (`.github/workflows/release.yml`).
-  On any `v*` tag push, cross-compiles binaries for linux/amd64,
-  linux/arm64, darwin/amd64, darwin/arm64, generates a
-  `checksums.txt`, extracts release notes from the matching
-  CHANGELOG section, and publishes everything (including `install.sh`)
-  to the GitHub Release. Also supports `workflow_dispatch` for
-  manually re-releasing an existing tag.
-- Add GitHub Actions **CI** workflow (`.github/workflows/ci.yml`):
-  `go vet`, `go test ./... -race`, and `govulncheck` on every push to
-  main and every pull request.
-- Release binaries are now built with `-trimpath -s -w -X
-  main.version=<tag>` so `yoyo -v` reports the actual tag instead of
-  `dev`, and the binary is reproducible and stripped.
-
 ### Fixed
 
 - **3× Ctrl-C window widened from 500ms → 1s**. 500ms was too tight
   for real frustrated-Ctrl-C cadence (~600ms). The sliding-window
   test still protects against accidental triggers from occasional
   solo Ctrl-C presses.
+
+### Build
+
+- Release binaries are built with `-trimpath -ldflags "-s -w -X
+  main.version=<tag>"` so `yoyo -v` reports the actual tag instead
+  of `dev`, and the binary is reproducible and stripped.
 
 ## [2.2.1] — 2026-04-22
 
