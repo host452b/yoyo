@@ -29,7 +29,7 @@ curl -fsSL https://github.com/host452b/yoyo/releases/latest/download/install.sh 
 ### pip（PyPI）
 
 ```bash
-pip install yoyo
+pip install yoyo-cli
 ```
 
 pip 会根据你的系统自动选对应 wheel（linux-amd64 / linux-arm64 / macos-amd64 / macos-arm64）。和 `curl | sh` 装的是同一个二进制；wheel 里只打包 Go 编译产物，不依赖 Go 工具链也不依赖 Python 运行时库。

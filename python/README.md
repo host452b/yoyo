@@ -7,8 +7,12 @@ Agent, …).
 ## Install
 
 ```bash
-pip install yoyo
+pip install yoyo-cli
 ```
+
+(The PyPI package name is `yoyo-cli` because the bare `yoyo` name is
+already taken on PyPI by an unrelated placeholder. The installed CLI
+command is still just `yoyo`.)
 
 pip will pick the matching pre-built binary for your OS / architecture
 (linux-amd64, linux-arm64, macos-amd64, macos-arm64). No Go toolchain needed.

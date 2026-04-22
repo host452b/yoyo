@@ -8,10 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **PyPI distribution**: `pip install yoyo` now installs pre-built
-  Go binaries via per-platform wheels (linux-amd64, linux-arm64,
-  macos-amd64, macos-arm64). Wheels contain only the compiled Go
-  binary — no Python runtime dependency.
+- **PyPI distribution** — `pip install yoyo-cli` now installs
+  pre-built Go binaries via per-platform wheels (linux-amd64,
+  linux-arm64, macos-amd64, macos-arm64). Wheels contain only the
+  compiled Go binary — no Python runtime dependency. The installed
+  command is still just `yoyo`; the PyPI package name is `yoyo-cli`
+  because the bare `yoyo` name was already taken on PyPI by an
+  unrelated placeholder.
   Build: `python3 python/build_wheels.py vX.Y.Z`. Extended
   `scripts/release.sh` to build wheels automatically; set
   `UPLOAD_PYPI=1` to also upload via `twine`. See

@@ -66,7 +66,7 @@ def wheel_metadata(version: str, readme_path: Path) -> str:
     long_description = readme_path.read_text(encoding="utf-8")
     return (
         "Metadata-Version: 2.1\n"
-        "Name: yoyo\n"
+        "Name: yoyo-cli\n"
         f"Version: {version}\n"
         "Summary: PTY proxy that auto-approves AI agent permission prompts\n"
         "Home-page: https://github.com/host452b/yoyo\n"
@@ -123,7 +123,10 @@ def build_go_binary(goos: str, goarch: str, tag: str, out_path: Path,
 def build_wheel(version: str, platform_tag: str, binary_path: Path,
                 readme_path: Path, out_dir: Path) -> Path:
     """Pack one binary into a platform-specific wheel."""
-    dist = f"yoyo-{version}"
+    # Wheel filename uses the PyPI-sanitized distribution name. yoyo-cli
+    # → yoyo_cli per PEP 427 (runs of hyphens become underscores in the
+    # file name, though the installable Name stays "yoyo-cli").
+    dist = f"yoyo_cli-{version}"
     wheel_name = f"{dist}-py3-none-{platform_tag}.whl"
     out_path = out_dir / wheel_name
 
@@ -194,6 +197,8 @@ def main(argv: List[str]) -> int:
 
     # Clear prior wheels for this version to avoid pile-up.
     for old in out_dir.glob(f"yoyo-{version}-*.whl"):
+        old.unlink()
+    for old in out_dir.glob(f"yoyo_cli-{version}-*.whl"):
         old.unlink()
 
     # For each platform: build binary, pack into wheel.

@@ -31,7 +31,7 @@ Auto-detects your OS and architecture (linux/darwin × amd64/arm64). No Go requi
 ### pip (PyPI)
 
 ```bash
-pip install yoyo
+pip install yoyo-cli
 ```
 
 pip picks the matching pre-built wheel (linux-amd64 / linux-arm64 /
