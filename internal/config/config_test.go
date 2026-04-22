@@ -227,3 +227,54 @@ delay = 1
 		t.Error("omitted afk_idle should parse as nil (inherit)")
 	}
 }
+
+func TestLoad_FuzzyDefaultsOff(t *testing.T) {
+	path := writeConfig(t, "")
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Defaults.Fuzzy {
+		t.Error("default fuzzy = true, want false")
+	}
+	if cfg.Defaults.FuzzyStable != 3*time.Second {
+		t.Errorf("default fuzzy_stable = %v, want 3s", cfg.Defaults.FuzzyStable)
+	}
+}
+
+func TestLoad_FuzzyExplicit(t *testing.T) {
+	path := writeConfig(t, `
+[defaults]
+fuzzy        = true
+fuzzy_stable = "5s"
+`)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Defaults.Fuzzy {
+		t.Error("fuzzy = false, want true")
+	}
+	if cfg.Defaults.FuzzyStable != 5*time.Second {
+		t.Errorf("fuzzy_stable = %v, want 5s", cfg.Defaults.FuzzyStable)
+	}
+}
+
+func TestLoad_AgentFuzzyOverride(t *testing.T) {
+	path := writeConfig(t, `
+[agents.cursor]
+fuzzy        = true
+fuzzy_stable = "2s"
+`)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ac := cfg.Agents["cursor"]
+	if ac.Fuzzy == nil || !*ac.Fuzzy {
+		t.Error("cursor.fuzzy should be explicitly true")
+	}
+	if ac.FuzzyStable == nil || *ac.FuzzyStable != 2*time.Second {
+		t.Errorf("cursor.fuzzy_stable = %v, want 2s", ac.FuzzyStable)
+	}
+}

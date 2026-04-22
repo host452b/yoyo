@@ -32,11 +32,14 @@ type Rule struct {
 }
 
 type AgentConfig struct {
-	Delay      *int           // nil = inherit defaults, 0 = immediate, >0 = seconds
-	Afk        *bool          // nil = inherit defaults
-	AfkIdle    *time.Duration `toml:"-"`
-	AfkIdleRaw *Duration      `toml:"afk_idle"`
-	Rules      []Rule
+	Delay          *int           // nil = inherit defaults, 0 = immediate, >0 = seconds
+	Afk            *bool          // nil = inherit defaults
+	AfkIdle        *time.Duration `toml:"-"`
+	AfkIdleRaw     *Duration      `toml:"afk_idle"`
+	Fuzzy          *bool
+	FuzzyStable    *time.Duration `toml:"-"`
+	FuzzyStableRaw *Duration      `toml:"fuzzy_stable"`
+	Rules          []Rule
 }
 
 type Defaults struct {
@@ -45,8 +48,11 @@ type Defaults struct {
 	Afk     bool
 	AfkIdle time.Duration `toml:"-"`
 	// AfkIdleRaw is the TOML source; copied into AfkIdle after validation.
-	AfkIdleRaw Duration `toml:"afk_idle"`
-	LogFile    string   `toml:"log_file"`
+	AfkIdleRaw     Duration `toml:"afk_idle"`
+	Fuzzy          bool
+	FuzzyStable    time.Duration `toml:"-"`
+	FuzzyStableRaw Duration      `toml:"fuzzy_stable"`
+	LogFile        string        `toml:"log_file"`
 }
 
 type Config struct {
@@ -98,6 +104,16 @@ func load(path string, required bool) (*Config, error) {
 		return nil, fmt.Errorf("defaults.afk_idle must be >= 0, got %s", cfg.Defaults.AfkIdle)
 	}
 
+	// fuzzy_stable: default 3 s when unset; negative is invalid.
+	if cfg.Defaults.FuzzyStableRaw == 0 {
+		cfg.Defaults.FuzzyStable = 3 * time.Second
+	} else {
+		cfg.Defaults.FuzzyStable = time.Duration(cfg.Defaults.FuzzyStableRaw)
+	}
+	if cfg.Defaults.FuzzyStable < 0 {
+		return nil, fmt.Errorf("defaults.fuzzy_stable must be >= 0, got %s", cfg.Defaults.FuzzyStable)
+	}
+
 	// Validate delay values
 	if cfg.Defaults.Delay < 0 {
 		return nil, fmt.Errorf("defaults.delay must be >= 0, got %d", cfg.Defaults.Delay)
@@ -109,12 +125,24 @@ func load(path string, required bool) (*Config, error) {
 	}
 
 	for name, a := range cfg.Agents {
+		changed := false
 		if a.AfkIdleRaw != nil {
 			d := time.Duration(*a.AfkIdleRaw)
 			if d < 0 {
 				return nil, fmt.Errorf("agents.%s.afk_idle must be >= 0, got %s", name, d)
 			}
 			a.AfkIdle = &d
+			changed = true
+		}
+		if a.FuzzyStableRaw != nil {
+			d := time.Duration(*a.FuzzyStableRaw)
+			if d < 0 {
+				return nil, fmt.Errorf("agents.%s.fuzzy_stable must be >= 0, got %s", name, d)
+			}
+			a.FuzzyStable = &d
+			changed = true
+		}
+		if changed {
 			cfg.Agents[name] = a
 		}
 	}
