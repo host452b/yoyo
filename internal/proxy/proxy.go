@@ -239,20 +239,20 @@ func (p *Proxy) Run() error {
 				closeDone()
 				return nil
 			}
-			// Handle Ctrl+Y a inline (rather than inside handlePrefix) because
-			// AFK state is local to Run. Covers two scenarios:
-			//   (A) "\x19a" arrives as one chunk from stdin
-			//   (B) "\x19" then "a" arrive as separate chunks (prefixActive=true)
-			toggleAfk := false
+			// Handle Ctrl+Y a / Ctrl+Y f inline (rather than inside handlePrefix)
+			// because AFK and fuzzy state are local to Run. Covers two scenarios:
+			//   (A) "\x19<letter>" arrives as one chunk from stdin
+			//   (B) "\x19" then "<letter>" arrive as separate chunks (prefixActive=true)
+			var toggleCmd byte
 			switch {
-			case len(data) >= 2 && data[0] == prefixByte && data[1] == 'a':
+			case len(data) >= 2 && data[0] == prefixByte && (data[1] == 'a' || data[1] == 'f'):
+				toggleCmd = data[1]
 				data = data[2:]
-				toggleAfk = true
-			case prefixActive && len(data) > 0 && data[0] == 'a':
+			case prefixActive && len(data) > 0 && (data[0] == 'a' || data[0] == 'f'):
+				toggleCmd = data[0]
 				data = data[1:]
-				toggleAfk = true
 			}
-			if toggleAfk {
+			if toggleCmd != 0 {
 				prefixActive = false
 				cfg.StatusBar.SetPrefix(false)
 				if prefixTimer != nil {
@@ -260,11 +260,25 @@ func (p *Proxy) Run() error {
 					prefixTimer = nil
 					prefixTimerCh = nil
 				}
-				afkEnabled = !afkEnabled
-				if afkEnabled {
-					armAfk()
-				} else {
-					stopAfk()
+				switch toggleCmd {
+				case 'a':
+					afkEnabled = !afkEnabled
+					if afkEnabled {
+						armAfk()
+					} else {
+						stopAfk()
+					}
+				case 'f':
+					fuzzyEnabled = !fuzzyEnabled
+					if !fuzzyEnabled {
+						stopFuzzy()
+					} else {
+						// Re-enable: prime hash from current screen and arm the
+						// stability timer immediately, so a screen that was
+						// already stable at toggle time still gets evaluated.
+						fuzzyLastHash = detector.HashBody(cfg.Screen.Text())
+						armFuzzyStable()
+					}
 				}
 				stdout.Write(cfg.StatusBar.WrapFrame([]byte{}))
 				if len(data) == 0 {

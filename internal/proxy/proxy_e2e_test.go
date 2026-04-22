@@ -749,3 +749,25 @@ func TestProxy_E2E_FuzzyDryRun(t *testing.T) {
 	pty.close()
 	<-done
 }
+
+// 26. Ctrl+Y f disables fuzzy at runtime; second Ctrl+Y f re-enables it
+func TestProxy_E2E_FuzzyToggleViaPrefix(t *testing.T) {
+	pr, pty, stdin := makeProxyWithFuzzy(t, 150*time.Millisecond, false)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	// Toggle fuzzy OFF
+	stdin.send("\x19f")
+	time.Sleep(50 * time.Millisecond)
+
+	// Send a y/n prompt — fuzzy would normally fire, but toggled off → no \r
+	pty.send("continue (y/n) ")
+	ensureNotWritten(t, pty, "\r", 400*time.Millisecond)
+
+	// Toggle fuzzy back ON — should now fire within a stable window
+	stdin.send("\x19f")
+	waitWritten(t, pty, "\r", 1*time.Second)
+
+	pty.close()
+	<-done
+}
