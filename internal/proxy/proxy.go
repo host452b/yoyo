@@ -38,6 +38,9 @@ type Config struct {
 	Delay     int  // seconds
 	Enabled   bool
 	DryRun    bool
+
+	AfkEnabled bool
+	AfkIdle    time.Duration
 }
 
 // Proxy is the coordinator that routes bytes between stdin, child PTY, and stdout.
@@ -149,6 +152,30 @@ func (p *Proxy) Run() error {
 	var prefixTimerCh <-chan time.Time
 	prefixActive := false
 
+	afkEnabled := cfg.AfkEnabled
+	var afkIdleTimer *time.Timer
+	var afkIdleTimerCh <-chan time.Time
+	var afkNudgedUntil time.Time // status-bar flash window; used by later tasks
+
+	armAfk := func() {
+		if !afkEnabled || cfg.AfkIdle <= 0 {
+			return
+		}
+		if afkIdleTimer != nil {
+			afkIdleTimer.Stop()
+		}
+		afkIdleTimer = time.NewTimer(cfg.AfkIdle)
+		afkIdleTimerCh = afkIdleTimer.C
+	}
+	stopAfk := func() {
+		if afkIdleTimer != nil {
+			afkIdleTimer.Stop()
+		}
+		afkIdleTimer = nil
+		afkIdleTimerCh = nil
+	}
+	armAfk()
+
 	// Rebuild rule chain when agent kind is resolved
 	chain := cfg.RuleChain
 
@@ -176,6 +203,7 @@ func (p *Proxy) Run() error {
 				if prefixTimer != nil {
 					prefixTimer.Stop()
 				}
+				stopAfk()
 				closeDone()
 				return nil
 			}
@@ -207,6 +235,7 @@ func (p *Proxy) Run() error {
 				if prefixTimer != nil {
 					prefixTimer.Stop()
 				}
+				stopAfk()
 				closeDone()
 				return nil
 			}
@@ -293,6 +322,26 @@ func (p *Proxy) Run() error {
 			prefixActive = false
 			cfg.StatusBar.SetPrefix(false)
 			cfg.PTY.Write([]byte{prefixByte})
+
+		case <-afkIdleTimerCh:
+			afkIdleTimerCh = nil
+			afkIdleTimer = nil
+			if cfg.DryRun {
+				if cfg.Log != nil {
+					cfg.Log.Infof("afk: would send y + continue")
+				}
+			} else {
+				if _, err := cfg.PTY.Write([]byte("y\r")); err != nil && cfg.Log != nil {
+					cfg.Log.Errorf("afk: failed to send y: %v", err)
+				}
+				time.Sleep(200 * time.Millisecond)
+				if _, err := cfg.PTY.Write([]byte("continue, Choose based on your project understanding.\r")); err != nil && cfg.Log != nil {
+					cfg.Log.Errorf("afk: failed to send continue: %v", err)
+				}
+			}
+			afkNudgedUntil = time.Now().Add(2 * time.Second)
+			_ = afkNudgedUntil // consumed by Task 11 (status-bar flash)
+			armAfk()
 		}
 	}
 }

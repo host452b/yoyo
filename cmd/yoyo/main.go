@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	ptylib "github.com/aymanbagabas/go-pty"
 	xterm "golang.org/x/term"
@@ -134,6 +135,8 @@ func main() {
 		cfgPath    = flag.String("config", config.DefaultPath(), "config file path")
 		showVer    = flag.Bool("v", false, "print version and exit")
 		dryRun     = flag.Bool("dry-run", false, "detect prompts but do not send approvals")
+		afk        = flag.Bool("afk", false, "enable AFK mode (idle-timer nudges)")
+		afkIdle    = flag.Duration("afk-idle", 10*time.Minute, "AFK idle threshold")
 	)
 	flag.Parse()
 
@@ -195,6 +198,37 @@ func main() {
 		if agentCfg, ok := cfg.Agents[kind.String()]; ok && agentCfg.Delay != nil {
 			effectiveDelay = *agentCfg.Delay
 		}
+	}
+
+	// Resolve effective AFK.
+	var afkFromFlag, afkIdleFromFlag bool
+	flag.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "afk":
+			afkFromFlag = true
+		case "afk-idle":
+			afkIdleFromFlag = true
+		}
+	})
+
+	effectiveAfk := cfg.Defaults.Afk
+	effectiveAfkIdle := cfg.Defaults.AfkIdle
+	if agentCfg, ok := cfg.Agents[kind.String()]; ok {
+		if !afkFromFlag && agentCfg.Afk != nil {
+			effectiveAfk = *agentCfg.Afk
+		}
+		if !afkIdleFromFlag && agentCfg.AfkIdle != nil {
+			effectiveAfkIdle = *agentCfg.AfkIdle
+		}
+	}
+	if afkFromFlag {
+		effectiveAfk = *afk
+	}
+	if afkIdleFromFlag {
+		effectiveAfkIdle = *afkIdle
+	}
+	if effectiveAfkIdle <= 0 {
+		effectiveAfkIdle = 10 * time.Minute
 	}
 
 	// Start logger
@@ -307,17 +341,19 @@ func main() {
 
 	// Run proxy
 	pr := proxy.New(proxy.Config{
-		PTY:       p,
-		RuleChain: chain,
-		Memory:    memory.New(),
-		StatusBar: sb,
-		Log:       log,
-		Term:      t,
-		Screen:    scr,
-		AgentKind: kind,
-		Delay:     effectiveDelay,
-		Enabled:   cfg.Defaults.Enabled,
-		DryRun:    *dryRun,
+		PTY:        p,
+		RuleChain:  chain,
+		Memory:     memory.New(),
+		StatusBar:  sb,
+		Log:        log,
+		Term:       t,
+		Screen:     scr,
+		AgentKind:  kind,
+		Delay:      effectiveDelay,
+		Enabled:    cfg.Defaults.Enabled,
+		DryRun:     *dryRun,
+		AfkEnabled: effectiveAfk,
+		AfkIdle:    effectiveAfkIdle,
 	})
 
 	if err := pr.Run(); err != nil {

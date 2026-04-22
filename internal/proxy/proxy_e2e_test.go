@@ -509,3 +509,49 @@ func TestProxy_E2E_PrefixKeyUnknown(t *testing.T) {
 		// still running — pass
 	}
 }
+
+// makeProxyWithAfk wires up a proxy with AFK enabled and a short idle.
+func makeProxyWithAfk(t *testing.T, idle time.Duration, dryRun bool) (*proxy.Proxy, *fakePTY, *fakeStdin) {
+	t.Helper()
+	log, err := logger.New(t.TempDir() + "/test.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { log.Close() })
+	pty := newFakePTY()
+	stdin := newFakeStdin()
+	scr := screen.New(80, 24)
+	sb := statusbar.New(24, 80, true, 0)
+	chain := detector.RuleChain{agent.KindClaude.Detector()}
+	pr := proxy.New(proxy.Config{
+		PTY:        pty,
+		Stdin:      stdin,
+		Stdout:     io.Discard,
+		RuleChain:  chain,
+		Memory:     memory.New(),
+		StatusBar:  sb,
+		Log:        log,
+		Term:       term.NewNoOp(),
+		Screen:     scr,
+		AgentKind:  agent.KindClaude,
+		Delay:      0,
+		Enabled:    true,
+		DryRun:     dryRun,
+		AfkEnabled: true,
+		AfkIdle:    idle,
+	})
+	return pr, pty, stdin
+}
+
+// 17. AFK fires after idle with y\r + continue message
+func TestProxy_E2E_AfkFires(t *testing.T) {
+	pr, pty, stdin := makeProxyWithAfk(t, 300*time.Millisecond, false)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	waitWritten(t, pty, "y\r", 1*time.Second)
+	waitWritten(t, pty, "continue, Choose based on your project understanding.\r", 1*time.Second)
+
+	pty.close()
+	<-done
+}
