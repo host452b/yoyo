@@ -224,6 +224,10 @@ func (p *Proxy) Run() error {
 				cfg.StatusBar.SetCountdown(-1)
 			}
 
+			if afkIdleTimer != nil {
+				afkIdleTimer.Reset(cfg.AfkIdle)
+			}
+
 			cfg.PTY.Write(data)
 
 		case data, ok := <-outputCh:

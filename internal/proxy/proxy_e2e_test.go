@@ -605,3 +605,29 @@ func TestProxy_E2E_AfkResetOnOutput(t *testing.T) {
 	pty.close()
 	<-done
 }
+
+// 20. User stdin activity during idle window keeps resetting the AFK timer
+func TestProxy_E2E_AfkResetOnUserInput(t *testing.T) {
+	pr, pty, stdin := makeProxyWithAfk(t, 300*time.Millisecond, false)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	stop := make(chan struct{})
+	go func() {
+		tk := time.NewTicker(100 * time.Millisecond)
+		defer tk.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-tk.C:
+				stdin.send("x")
+			}
+		}
+	}()
+
+	ensureNotWritten(t, pty, "y\r", 600*time.Millisecond)
+	close(stop)
+	pty.close()
+	<-done
+}
