@@ -52,6 +52,13 @@ type Config struct {
 	// appropriate key; yoyo just won't pull the trigger for them. See
 	// internal/detector/danger.go for the full pattern list.
 	SafetyEnabled bool
+
+	// Kill is the escape-hatch callback for killing the child process
+	// when the agent's TUI has wedged its input handling (e.g. Claude
+	// Code's "Press Ctrl-C again to exit" stuck state). Invoked by two
+	// paths: the Ctrl+Y q prefix command, and 3× Ctrl-C within 500ms.
+	// Typically set to func() { cmd.Process.Kill() }.
+	Kill func()
 }
 
 // Proxy is the coordinator that routes bytes between stdin, child PTY, and stdout.
@@ -163,6 +170,10 @@ func (p *Proxy) Run() error {
 	var prefixTimerCh <-chan time.Time
 	prefixActive := false
 
+	// Sliding-window Ctrl-C detector: 3 hits within 500 ms → force-kill.
+	// Holds at most 3 timestamps; trimmed on each new 0x03 byte.
+	ctrlCHits := make([]time.Time, 0, 3)
+
 	afkEnabled := cfg.AfkEnabled
 	var afkIdleTimer *time.Timer
 	var afkIdleTimerCh <-chan time.Time
@@ -263,16 +274,45 @@ func (p *Proxy) Run() error {
 				closeDone()
 				return nil
 			}
-			// Handle Ctrl+Y a / Ctrl+Y f inline (rather than inside handlePrefix)
-			// because AFK and fuzzy state are local to Run. Covers two scenarios:
+			// Force-kill escape hatch: three Ctrl-C (0x03) presses within
+			// 500 ms trigger cfg.Kill(). Covers the case where the agent's
+			// TUI has wedged its input handling and normal Ctrl-C isn't
+			// taking effect anymore. Also honoured: Ctrl+Y q (below).
+			for _, b := range data {
+				if b != 0x03 {
+					ctrlCHits = ctrlCHits[:0]
+					continue
+				}
+				now := time.Now()
+				// Drop timestamps older than 500 ms.
+				cut := now.Add(-500 * time.Millisecond)
+				trimmed := ctrlCHits[:0]
+				for _, t := range ctrlCHits {
+					if t.After(cut) {
+						trimmed = append(trimmed, t)
+					}
+				}
+				ctrlCHits = append(trimmed, now)
+				if len(ctrlCHits) >= 3 && cfg.Kill != nil {
+					if cfg.Log != nil {
+						cfg.Log.Errorf("force-kill: 3x Ctrl-C within 500ms — killing child")
+					}
+					cfg.Kill()
+					ctrlCHits = ctrlCHits[:0]
+				}
+			}
+
+			// Handle Ctrl+Y a / Ctrl+Y f / Ctrl+Y q inline (rather than inside
+			// handlePrefix) because their state is local to Run. Covers two
+			// scenarios per letter:
 			//   (A) "\x19<letter>" arrives as one chunk from stdin
 			//   (B) "\x19" then "<letter>" arrive as separate chunks (prefixActive=true)
 			var toggleCmd byte
 			switch {
-			case len(data) >= 2 && data[0] == prefixByte && (data[1] == 'a' || data[1] == 'f'):
+			case len(data) >= 2 && data[0] == prefixByte && (data[1] == 'a' || data[1] == 'f' || data[1] == 'q'):
 				toggleCmd = data[1]
 				data = data[2:]
-			case prefixActive && len(data) > 0 && (data[0] == 'a' || data[0] == 'f'):
+			case prefixActive && len(data) > 0 && (data[0] == 'a' || data[0] == 'f' || data[0] == 'q'):
 				toggleCmd = data[0]
 				data = data[1:]
 			}
@@ -302,6 +342,16 @@ func (p *Proxy) Run() error {
 						// already stable at toggle time still gets evaluated.
 						fuzzyLastHash = detector.HashBody(cfg.Screen.Text())
 						armFuzzyStable()
+					}
+				case 'q':
+					// Force-kill the child. Deliberate escape hatch for wedged
+					// agents (Claude Code's "Press Ctrl-C again to exit" stuck
+					// state, etc.). Same action as 3× Ctrl-C within 500ms.
+					if cfg.Log != nil {
+						cfg.Log.Errorf("force-kill: Ctrl+Y q pressed — killing child")
+					}
+					if cfg.Kill != nil {
+						cfg.Kill()
 					}
 				}
 				stdout.Write(cfg.StatusBar.WrapFrame([]byte{}))

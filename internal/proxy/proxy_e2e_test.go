@@ -9,6 +9,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -994,6 +995,114 @@ func TestProxy_E2E_NoSafetyFlagPermitsApproval(t *testing.T) {
 
 	pty.send(claudeDeletePrompt)
 	waitWritten(t, pty, "\r", 1*time.Second)
+
+	pty.close()
+	<-done
+}
+
+// ── Force-kill escape hatch tests (v2.2.1) ──────────────────────────────────
+
+// makeProxyWithKill sets up a proxy whose Kill callback records how
+// many times it was invoked (via an atomic counter).
+func makeProxyWithKill(t *testing.T, counter *int64) (*proxy.Proxy, *fakePTY, *fakeStdin) {
+	t.Helper()
+	log, err := logger.New(t.TempDir() + "/test.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { log.Close() })
+	pty := newFakePTY()
+	stdin := newFakeStdin()
+	scr := screen.New(80, 24)
+	sb := statusbar.New(24, 80, true, 0)
+	chain := detector.RuleChain{agent.KindClaude.Detector()}
+	pr := proxy.New(proxy.Config{
+		PTY:       pty,
+		Stdin:     stdin,
+		Stdout:    io.Discard,
+		RuleChain: chain,
+		Memory:    memory.New(),
+		StatusBar: sb,
+		Log:       log,
+		Term:      term.NewNoOp(),
+		Screen:    scr,
+		AgentKind: agent.KindClaude,
+		Delay:     0,
+		Enabled:   true,
+		Kill:      func() { atomic.AddInt64(counter, 1) },
+	})
+	return pr, pty, stdin
+}
+
+// 34. Ctrl+Y q triggers the force-kill callback.
+func TestProxy_E2E_CtrlYQ_ForceKill(t *testing.T) {
+	var kills int64
+	pr, pty, stdin := makeProxyWithKill(t, &kills)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	stdin.send("\x19q")
+
+	// Poll briefly for the kill to land.
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if atomic.LoadInt64(&kills) == 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := atomic.LoadInt64(&kills); got != 1 {
+		t.Errorf("expected 1 kill, got %d", got)
+	}
+
+	pty.close()
+	<-done
+}
+
+// 35. Three Ctrl-C within 500 ms triggers force-kill (muscle-memory path).
+func TestProxy_E2E_TripleCtrlC_ForceKill(t *testing.T) {
+	var kills int64
+	pr, pty, stdin := makeProxyWithKill(t, &kills)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	// 3 Ctrl-C bytes back-to-back.
+	stdin.send("\x03\x03\x03")
+
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if atomic.LoadInt64(&kills) >= 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := atomic.LoadInt64(&kills); got != 1 {
+		t.Errorf("expected 1 kill, got %d", got)
+	}
+
+	pty.close()
+	<-done
+}
+
+// 36. Ctrl-C hits spaced > 500 ms apart must NOT trigger force-kill. This
+//     locks in the sliding-window semantics: a user who absent-mindedly
+//     taps Ctrl-C occasionally shouldn't accidentally kill the agent.
+func TestProxy_E2E_SpacedCtrlC_DoesNotKill(t *testing.T) {
+	var kills int64
+	pr, pty, stdin := makeProxyWithKill(t, &kills)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	stdin.send("\x03")
+	time.Sleep(600 * time.Millisecond)
+	stdin.send("\x03")
+	time.Sleep(600 * time.Millisecond)
+	stdin.send("\x03")
+	time.Sleep(100 * time.Millisecond)
+
+	if got := atomic.LoadInt64(&kills); got != 0 {
+		t.Errorf("expected 0 kills (hits spaced >500ms), got %d", got)
+	}
 
 	pty.close()
 	<-done

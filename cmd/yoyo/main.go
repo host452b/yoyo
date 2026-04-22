@@ -103,6 +103,8 @@ RUNTIME CONTROLS  (Ctrl+Y is the prefix key)
   Ctrl+Y  5     Set delay to 5 seconds (enables if currently off)
   Ctrl+Y  a     Toggle AFK mode on/off (independent of auto-approve)
   Ctrl+Y  f     Toggle fuzzy fallback on/off
+  Ctrl+Y  q     Force-kill the child process (escape hatch for wedged
+                agents). Also triggered by 3x Ctrl-C within 500 ms.
 
   Pressing any non-escape key while the countdown is running cancels
   the pending approval, letting you inspect or respond manually.
@@ -364,6 +366,12 @@ func main() {
 		FuzzyStable:  eff.FuzzyStable,
 
 		SafetyEnabled: eff.Safety,
+
+		Kill: func() {
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+		},
 	})
 
 	if err := pr.Run(); err != nil {

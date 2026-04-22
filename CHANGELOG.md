@@ -4,6 +4,31 @@ All notable changes to yoyo are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] — 2026-04-22
+
+### Added
+
+- **Force-kill escape hatch** for wedged agents. When the agent's TUI
+  jams its own Ctrl-C handling (e.g. Claude Code showing "Press Ctrl-C
+  again to exit" but not responding to subsequent presses), yoyo now
+  offers two ways to kill the child from outside the byte stream:
+  - `Ctrl+Y q` — deliberate keyboard command.
+  - **3× Ctrl-C within 500 ms** — muscle-memory path for users who
+    just bang on Ctrl-C.
+
+  Both call `cmd.Process.Kill()` (SIGKILL) directly; yoyo exits
+  cleanly afterward. The sliding-window detector resets on any
+  non-Ctrl-C byte, so occasional Ctrl-C presses spaced more than 500
+  ms apart don't accidentally terminate the agent.
+
+### Docs
+
+- Supported Agents section now calls out that Cursor CLI also ships
+  as `agent`. Command-based detection stays on `cursor` /
+  `cursor-agent` only (too much collision risk with `ssh-agent` et
+  al.); bare `agent` is auto-identified from Cursor's banner text in
+  the first 10 output frames.
+
 ## [2.2.0] — 2026-04-22
 
 ### Added

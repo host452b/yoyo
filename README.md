@@ -146,7 +146,7 @@ more general fallbacks you can layer on.
 |-------|---------|---------------------|
 | [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview) | `claude` | `───` bordered permission box + numbered `Yes` / `No` options |
 | [OpenAI Codex CLI](https://github.com/openai/codex) | `codex` | "Would you like to" / "needs your approval" headers + "Press enter to confirm or esc to cancel" footer |
-| [Cursor Agent](https://cursor.com/agents) | `cursor`, `cursor-agent` | `┌─┐` box-drawn prompts with `(y)` / `n)` options (both old box-internal layout and new box-above / options-below layout) |
+| [Cursor Agent](https://cursor.com/agents) | `cursor`, `cursor-agent`, `agent` | `┌─┐` box-drawn prompts with `(y)` / `n)` options (both old box-internal layout and new box-above / options-below layout). `agent` as a plain command name is not hard-coded into command-based detection (too generic — clashes with `ssh-agent` etc.); yoyo auto-identifies it from Cursor's banner text in the first 10 output frames. |
 
 Running `yoyo claude` / `yoyo codex` / `yoyo cursor` picks the right detector
 automatically from the command name. If you launch via a wrapper script (or
@@ -207,8 +207,15 @@ The prefix key is **Ctrl+Y**. Press Ctrl+Y, then:
 | `1`–`5` | Set delay to N seconds (also re-enables if currently off) |
 | `a` | Toggle AFK mode on/off (independent of auto-approve) |
 | `f` | Toggle fuzzy fallback on/off |
+| `q` | Force-kill the child process (escape hatch for wedged agents) |
 
 **Cancel pending approval:** press any non-escape key while the countdown is running.
+
+**Force-kill the child** when the agent's TUI has wedged its own Ctrl-C handling
+(e.g. Claude Code's "Press Ctrl-C again to exit" stuck state): press
+`Ctrl+Y  q`, or tap `Ctrl-C` three times within 500 ms. Both trigger an
+OS-level `kill(9)` on the child, bypassing the PTY byte stream. yoyo itself
+exits cleanly afterward.
 
 ### AFK mode
 
