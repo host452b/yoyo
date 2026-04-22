@@ -1,4 +1,4 @@
-.PHONY: test test-race test-cover fuzz-quick fuzz-long build install tidy
+.PHONY: test test-race test-cover fuzz-quick fuzz-long build install tidy release
 
 # Standard test run (all packages, no race detector).
 test:
@@ -37,3 +37,12 @@ install:
 
 tidy:
 	go mod tidy
+
+# Manual release: build 4 platforms, generate checksums, upload to GitHub
+# Release with install.sh. TAG must be set (e.g. make release TAG=v2.3.0).
+# The tag must already exist locally and on origin.
+release:
+ifndef TAG
+	$(error TAG is not set — usage: make release TAG=v2.3.0)
+endif
+	./scripts/release.sh $(TAG)
