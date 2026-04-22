@@ -631,3 +631,21 @@ func TestProxy_E2E_AfkResetOnUserInput(t *testing.T) {
 	pty.close()
 	<-done
 }
+
+// 21. AFK in dry-run mode must log the intent but NOT write to the PTY
+func TestProxy_E2E_AfkDryRun(t *testing.T) {
+	pr, pty, stdin := makeProxyWithAfk(t, 200*time.Millisecond, true /*dryRun*/)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	// Wait long enough for a real fire to have happened
+	time.Sleep(500 * time.Millisecond)
+
+	if strings.Contains(pty.written(), "y\r") ||
+		strings.Contains(pty.written(), "continue, Choose") {
+		t.Errorf("dry-run wrote to PTY: %q", pty.written())
+	}
+
+	pty.close()
+	<-done
+}
