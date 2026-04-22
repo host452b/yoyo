@@ -173,3 +173,149 @@ CLI flags take priority over config, matching existing `-delay` behaviour.
 - Customisable nudge payload via config (users who need different behaviour
   can already author custom rules).
 - Auto-disable after N consecutive fires / exponential backoff.
+
+---
+
+# Generic Fuzzy Fallback (`-fuzzy`)
+
+A second, complementary fallback that sits in the same spec because it
+addresses the same core failure — "detector didn't match but the agent is
+clearly waiting for y/n input." AFK waits 10 minutes then pokes blindly;
+`-fuzzy` tries to detect "likely y/n prompt" within a few seconds so the
+user doesn't have to wait.
+
+The two are orthogonal and can be enabled together: fuzzy fires faster on
+recognisable y/n prompts; AFK catches everything else AFK-idle duration
+later.
+
+## Purpose
+
+Permissively recognise a y/n prompt via two signals:
+
+1. The visible screen text has been **stable** (unchanged) for a short
+   window — evidence that the agent is waiting, not still rendering.
+2. The screen contains at least one **precise** y/n prompt marker from a
+   narrow vocabulary — not generic English words that could appear in
+   logs or code.
+
+Both signals required → synthesise a `MatchResult{RuleName: "fuzzy",
+Response: "\r"}` and route through the normal approval flow (respects
+`-delay`, `memory.Seen` dedup, user-cancel on keypress).
+
+## Vocabulary
+
+Matched via a single case-insensitive regexp against the concatenation of
+the last 15 lines of `screen.Text()`:
+
+```
+\([yY]/[nN]\)       ( y/n ) — any casing
+\([nN]/[yY]\)       ( n/y ) — any casing
+\[[yY]/[nN]\]       [ y/n ]
+\[[nN]/[yY]\]       [ n/y ]
+[yY]/[nN]\?         y/n?
+[yY]es/[nN]o        yes/no
+```
+
+**Deliberately excluded:** bare `Yes`, `No`, `Enter`, `confirm`,
+`continue`, `(y)` alone (Cursor detector handles that one), word
+`approve`. They appear too often in normal text and logs.
+
+## Stability tracking
+
+A one-shot timer is armed whenever the hash of `screen.Text()` changes:
+
+- Every `outputCh` frame: compute `h = sha256(screen.Text())`. If `h` !=
+  `fuzzyLastHash`, update `fuzzyLastHash = h`; stop any pending stability
+  timer; start a fresh timer for `-fuzzy-stable` (default 3 s).
+- When the stability timer fires: re-read the current text, run the
+  vocabulary regex. If matched, synthesise a `MatchResult` and hand it to
+  the same approval code path that handles regular detector matches
+  (`memory.Seen` → immediate; otherwise start `-delay` countdown).
+
+The stability timer is a separate `*time.Timer` from the approval timer
+and the afk idle timer. They coexist in the `select`.
+
+## Configuration
+
+### CLI flags
+
+```
+-fuzzy                  enable generic fuzzy fallback (default: off)
+-fuzzy-stable duration  screen-stability window before attempting
+                        vocabulary match (default: 3s)
+```
+
+### Config file
+
+```toml
+[defaults]
+fuzzy        = true
+fuzzy_stable = "3s"
+
+[agents.cursor]
+fuzzy = false     # per-agent override
+```
+
+## Runtime toggle
+
+`Ctrl+Y f` toggles fuzzy on/off. Same pure-toggle semantics as
+`Ctrl+Y a`: works from either starting state, flips current state,
+stops any pending stability timer when turning off.
+
+## Status bar
+
+No dedicated segment. When fuzzy matches, the rule slot shows `fuzzy` —
+same mechanism the existing detectors use (`[yoyo: on 3s | fuzzy]`).
+During the `-delay` countdown after a fuzzy match the label becomes
+`[yoyo: on 2s | fuzzy]`, identical to the behaviour of Claude/Codex/Cursor
+matches.
+
+## Interactions
+
+- **Chain order**: fuzzy runs **after** all specific detectors (custom
+  rules → agent-specific → fuzzy). Specific detectors always win.
+- **Auto-approve disabled** (`Ctrl+Y 0`): fuzzy is suppressed along with
+  everything else, same as the other detectors.
+- **Dry-run**: a fuzzy match logs `fuzzy: would approve` and does not
+  send `\r`. Matches the existing dry-run contract.
+- **AFK interaction**: fuzzy's `\r` write produces output from the agent,
+  which resets the afk idle timer. AFK therefore never fires on a prompt
+  that fuzzy successfully handles.
+
+## Code layout (addition)
+
+- `internal/detector/fuzzy.go` (new): a plain function
+  `FuzzyMatch(text string) bool` that applies the regexp to the last 15
+  lines. No state; no `Detector` interface implementation. Fuzzy is *not*
+  a `RuleChain` member — its stability timing lives in `proxy.Run`.
+- `internal/detector/fuzzy_test.go` (new): vocabulary positive/negative
+  cases, boundary-line counting, case-insensitivity.
+- `internal/config/config.go`: `Fuzzy bool`, `FuzzyStable time.Duration`
+  (plus raw `Duration`) on `Defaults`; `Fuzzy *bool`, `FuzzyStable
+  *time.Duration` on `AgentConfig` — same pattern as the AFK fields.
+- `cmd/yoyo/main.go`: `-fuzzy` and `-fuzzy-stable` flags; resolve
+  effective values; pass `FuzzyEnabled` / `FuzzyStable` into
+  `proxy.Config`.
+- `internal/proxy/proxy.go`:
+  - `Config` gains `FuzzyEnabled bool`, `FuzzyStable time.Duration`.
+  - In `Run`: `fuzzyEnabled`, `fuzzyLastHash`, `fuzzyStableTimer`,
+    `fuzzyStableTimerCh` locals.
+  - Every `outputCh` frame: recompute `screen.Text()` hash, reset timer
+    on change.
+  - New `case <-fuzzyStableTimerCh:` re-reads text, runs `FuzzyMatch`,
+    synthesises `MatchResult`, funnels through the same approval handler
+    as regular detector hits.
+  - `handlePrefix` gets a `'f'` case mirroring `'a'`.
+- `internal/proxy/proxy_e2e_test.go`: new tests for fuzzy (fires on
+  stable y/n screen, does not fire without vocab match, respects
+  `-delay`, `Ctrl+Y f` toggles, dry-run suppresses).
+
+## Non-goals (fuzzy v1)
+
+- User-customisable vocabulary via config (custom rules already cover
+  this need with more precision).
+- Multi-response inference (always `\r`, never `y\r` or `n\r`).
+- Per-line scoring / confidence threshold (one bit: hit or miss).
+- Remembering "this screen looked like a prompt once, auto-approve next
+  time without re-matching" — `memory.Seen` already handles re-approval
+  once we've approved once.
