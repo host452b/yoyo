@@ -164,6 +164,7 @@ func main() {
 		afkIdle    = flag.Duration("afk-idle", 10*time.Minute, "AFK idle threshold")
 		fuzzy       = flag.Bool("fuzzy", false, "enable generic fuzzy fallback detector")
 		fuzzyStable = flag.Duration("fuzzy-stable", 3*time.Second, "screen-stable window before fuzzy attempts vocabulary match")
+		noSafety    = flag.Bool("no-safety", false, "disable the deletion-command safety guard (default: guard enabled)")
 	)
 	flag.Parse()
 
@@ -209,7 +210,7 @@ func main() {
 	kind := agent.KindFromCommand(args[0])
 
 	// Build cliFlags from parsed flags (nil fields = flag not explicitly passed).
-	cliF := cliFlags{LogPath: *logPath}
+	cliF := cliFlags{LogPath: *logPath, NoSafety: *noSafety}
 	if *delay >= 0 {
 		cliF.Delay = delay
 	}
@@ -352,6 +353,8 @@ func main() {
 		AfkIdle:    eff.AfkIdle,
 		FuzzyEnabled: eff.Fuzzy,
 		FuzzyStable:  eff.FuzzyStable,
+
+		SafetyEnabled: eff.Safety,
 	})
 
 	if err := pr.Run(); err != nil {

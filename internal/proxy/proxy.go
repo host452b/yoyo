@@ -44,6 +44,14 @@ type Config struct {
 
 	FuzzyEnabled bool
 	FuzzyStable  time.Duration
+
+	// SafetyEnabled makes sendApproval and the AFK fire case refuse to
+	// auto-approve when the visible screen contains a deletion-class
+	// command (rm -rf, git clean, kubectl delete, DROP TABLE, terraform
+	// destroy, …). The user can still approve manually by pressing the
+	// appropriate key; yoyo just won't pull the trigger for them. See
+	// internal/detector/danger.go for the full pattern list.
+	SafetyEnabled bool
 }
 
 // Proxy is the coordinator that routes bytes between stdin, child PTY, and stdout.
@@ -210,8 +218,24 @@ func (p *Proxy) Run() error {
 	// Rebuild rule chain when agent kind is resolved
 	chain := cfg.RuleChain
 
-	// Helper to send approval (respects dry-run mode)
+	// Helper to send approval (respects dry-run mode).
+	//
+	// Safety guard: if SafetyEnabled and the current screen contains a
+	// deletion-class command (rm -rf, git clean, kubectl delete, DROP
+	// TABLE, terraform destroy, etc.), auto-approval is refused. The
+	// user can still press y manually; yoyo just won't pull the trigger
+	// for them. Status bar flips to show "danger: <snippet>" so the user
+	// knows why approval was skipped.
 	sendApproval := func(result *detector.MatchResult, label string) {
+		if cfg.SafetyEnabled {
+			if hit, snippet := detector.ContainsDangerousCommand(cfg.Screen.Text()); hit {
+				cfg.StatusBar.SetRule("danger: " + snippet)
+				if cfg.Log != nil {
+					cfg.Log.Errorf("safety: blocked %s — dangerous command on screen: %q", label, snippet)
+				}
+				return
+			}
+		}
 		if dryRun {
 			if cfg.Log != nil {
 				cfg.Log.Infof("dry-run: would send %q for %s", result.Response, label)
@@ -434,6 +458,19 @@ func (p *Proxy) Run() error {
 		case <-afkIdleTimerCh:
 			afkIdleTimerCh = nil
 			afkIdleTimer = nil
+			// Safety guard: AFK is the most dangerous approval path (blind
+			// nudge with no pattern match), so we refuse to fire when the
+			// screen shows a deletion-class command.
+			if cfg.SafetyEnabled {
+				if hit, snippet := detector.ContainsDangerousCommand(cfg.Screen.Text()); hit {
+					cfg.StatusBar.SetRule("danger: " + snippet)
+					if cfg.Log != nil {
+						cfg.Log.Errorf("safety: blocked afk nudge — dangerous command on screen: %q", snippet)
+					}
+					armAfk() // rearm — user might manually handle, then afk resumes
+					break
+				}
+			}
 			if cfg.DryRun {
 				if cfg.Log != nil {
 					cfg.Log.Infof("afk: would send y + continue")

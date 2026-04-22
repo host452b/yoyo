@@ -87,6 +87,14 @@ func load(path string, required bool) (*Config, error) {
 		return nil, err
 	}
 
+	// Security: warn loudly if the config file is writable by group/other.
+	// A writable config lets an attacker inject [[rules]] with pattern=".*"
+	// response="y\r" and make yoyo approve anything. We warn but still load —
+	// refusing outright would be too surprising for users on shared machines
+	// with loose defaults. The warning is printed to stderr and the user
+	// can decide whether to tighten perms.
+	CheckPerms(path, os.Stderr)
+
 	if err := toml.Unmarshal(data, cfg); err != nil {
 		return nil, err
 	}

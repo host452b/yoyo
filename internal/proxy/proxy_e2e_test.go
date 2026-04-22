@@ -926,3 +926,122 @@ func TestProxy_E2E_SpecificDetectorWinsOverFuzzy(t *testing.T) {
 	pty.close()
 	<-done
 }
+
+// ── Safety guard tests (v2.2.0 hardening) ───────────────────────────────────
+
+// makeProxyWithSafety wires up a proxy with Safety enabled and either
+// auto-approve or fuzzy/afk as specified. The caller also controls
+// whether -no-safety was passed (safetyEnabled flag).
+func makeProxyWithSafety(t *testing.T, safetyEnabled bool) (*proxy.Proxy, *fakePTY, *fakeStdin) {
+	t.Helper()
+	log, err := logger.New(t.TempDir() + "/test.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { log.Close() })
+	pty := newFakePTY()
+	stdin := newFakeStdin()
+	scr := screen.New(80, 24)
+	sb := statusbar.New(24, 80, true, 0)
+	chain := detector.RuleChain{agent.KindClaude.Detector()}
+	pr := proxy.New(proxy.Config{
+		PTY:           pty,
+		Stdin:         stdin,
+		Stdout:        io.Discard,
+		RuleChain:     chain,
+		Memory:        memory.New(),
+		StatusBar:     sb,
+		Log:           log,
+		Term:          term.NewNoOp(),
+		Screen:        scr,
+		AgentKind:     agent.KindClaude,
+		Delay:         0,
+		Enabled:       true,
+		SafetyEnabled: safetyEnabled,
+	})
+	return pr, pty, stdin
+}
+
+// A Claude-style prompt whose body contains rm -rf /.
+const claudeDeletePrompt = "─────────────────────────────────────────────\r\n" +
+	" Run: rm -rf /tmp/work-area\r\n" +
+	" Then run: rm -rf /\r\n\r\n 1. Yes\r\n 2. No\r\n\r\n Esc to cancel\r\n"
+
+// 31. Safety ON: specific detector refuses to auto-approve when the
+//     prompt contains a deletion-class command.
+func TestProxy_E2E_SafetyBlocksClaudeApprovalWithDanger(t *testing.T) {
+	pr, pty, stdin := makeProxyWithSafety(t, true)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	pty.send(claudeDeletePrompt)
+
+	// Claude detector would normally approve immediately. With safety on,
+	// no \r should land on the PTY.
+	ensureNotWritten(t, pty, "\r", 500*time.Millisecond)
+
+	pty.close()
+	<-done
+}
+
+// 32. Safety OFF (-no-safety): same prompt approves as usual. Proves the
+//     opt-out actually opts out, and that the danger content alone doesn't
+//     block approval without the flag.
+func TestProxy_E2E_NoSafetyFlagPermitsApproval(t *testing.T) {
+	pr, pty, stdin := makeProxyWithSafety(t, false)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	pty.send(claudeDeletePrompt)
+	waitWritten(t, pty, "\r", 1*time.Second)
+
+	pty.close()
+	<-done
+}
+
+// 33. Safety ON: AFK refuses to blind-nudge when the screen shows a
+//     deletion-class command.
+func TestProxy_E2E_SafetyBlocksAfkNudgeWithDanger(t *testing.T) {
+	log, err := logger.New(t.TempDir() + "/test.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { log.Close() })
+	pty := newFakePTY()
+	stdin := newFakeStdin()
+	scr := screen.New(80, 24)
+	sb := statusbar.New(24, 80, true, 0)
+	chain := detector.RuleChain{agent.KindClaude.Detector()}
+	pr := proxy.New(proxy.Config{
+		PTY:           pty,
+		Stdin:         stdin,
+		Stdout:        io.Discard,
+		RuleChain:     chain,
+		Memory:        memory.New(),
+		StatusBar:     sb,
+		Log:           log,
+		Term:          term.NewNoOp(),
+		Screen:        scr,
+		AgentKind:     agent.KindClaude,
+		Delay:         0,
+		Enabled:       true,
+		AfkEnabled:    true,
+		AfkIdle:       200 * time.Millisecond,
+		SafetyEnabled: true,
+	})
+	defer stdin.close()
+	done := runProxy(pr)
+
+	// Plant a dangerous-looking command on the screen.
+	pty.send("about to run: rm -rf /\r\n")
+
+	// AFK would fire at ~200ms idle. With safety on, the y+continue must
+	// not land on the PTY.
+	time.Sleep(600 * time.Millisecond)
+	if got := pty.written(); len(got) != 0 {
+		t.Errorf("expected no afk writes under safety; got %q", got)
+	}
+
+	pty.close()
+	<-done
+}

@@ -18,6 +18,7 @@ type cliFlags struct {
 	AfkIdle     *time.Duration // nil = not explicit
 	Fuzzy       *bool          // nil = not explicit
 	FuzzyStable *time.Duration // nil = not explicit
+	NoSafety    bool           // true = user passed -no-safety on the command line
 }
 
 // effectiveSettings holds the values actually used by the proxy after
@@ -29,6 +30,7 @@ type effectiveSettings struct {
 	AfkIdle     time.Duration
 	Fuzzy       bool
 	FuzzyStable time.Duration
+	Safety      bool // true = refuse auto-approve when screen shows a deletion-class command
 }
 
 // resolveEffective computes the final values by layering sources:
@@ -48,6 +50,10 @@ func resolveEffective(cfg *config.Config, kind agent.Kind, f cliFlags) effective
 		AfkIdle:     cfg.Defaults.AfkIdle,
 		Fuzzy:       cfg.Defaults.Fuzzy,
 		FuzzyStable: cfg.Defaults.FuzzyStable,
+		Safety:      true, // default-on; opt-out only via -no-safety flag
+	}
+	if f.NoSafety {
+		s.Safety = false
 	}
 
 	if agentCfg, ok := cfg.Agents[kind.String()]; ok {
