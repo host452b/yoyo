@@ -187,6 +187,24 @@ yoyo injects `y` + Enter, pauses briefly, then sends
 `continue, Choose based on your project understanding.` + Enter, and
 rearms. Toggle at runtime with `Ctrl+Y a`.
 
+### Fuzzy fallback
+
+A second opt-in layer that catches y/n prompts the built-in detectors
+don't recognise. It requires (1) the screen to have been stable for
+`-fuzzy-stable` (default 3 s) and (2) a precise y/n vocabulary marker
+in the last 15 lines — things like `(y/n)`, `[Y/n]`, `y/n?`, or
+`yes/no`. Bare words like `Yes` or `enter` are intentionally excluded.
+
+```
+yoyo -fuzzy claude
+```
+
+Fuzzy matches go through the normal approval flow, so `-delay` and
+`memory`-based dedup still apply. Toggle at runtime with `Ctrl+Y f`.
+Combine with `-afk` for layered coverage: fuzzy handles recognisable
+stalls within seconds, AFK catches everything else after the idle
+window.
+
 ---
 
 ## Config File

@@ -73,6 +73,16 @@ FLAGS
         Idle threshold before AFK fires (default 10m). Accepts Go duration
         strings like "30m", "1h", "90s".
 
+  -fuzzy
+        Enable the generic fuzzy fallback detector. Runs after all
+        specific detectors. Matches narrow y/n prompt markers
+        ((y/n), [Y/n], yes/no, …) when the screen has been stable
+        for -fuzzy-stable.
+
+  -fuzzy-stable duration
+        Screen-stability window before fuzzy attempts a vocabulary
+        match (default 3s).
+
   -v    Print version and exit.
 
 RUNTIME CONTROLS  (Ctrl+Y is the prefix key)
@@ -83,6 +93,7 @@ RUNTIME CONTROLS  (Ctrl+Y is the prefix key)
   Ctrl+Y  4     Set delay to 4 seconds (enables if currently off)
   Ctrl+Y  5     Set delay to 5 seconds (enables if currently off)
   Ctrl+Y  a     Toggle AFK mode on/off (independent of auto-approve)
+  Ctrl+Y  f     Toggle fuzzy fallback on/off
 
   Pressing any non-escape key while the countdown is running cancels
   the pending approval, letting you inspect or respond manually.
@@ -93,6 +104,8 @@ CONFIG FILE  (~/.config/yoyo/config.toml)
   enabled  = true    # start with auto-approve on
   afk      = false   # enable AFK idle-nudge mode
   afk_idle = "10m"   # idle threshold before nudging
+  fuzzy        = false   # enable generic fuzzy fallback
+  fuzzy_stable = "3s"    # screen-stable window before fuzzy attempts match
   log_file = "~/.yoyo/yoyo.log"
 
   # Per-agent overrides (keys: "claude", "codex", "cursor")
