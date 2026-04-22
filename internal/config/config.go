@@ -7,9 +7,23 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/pelletier/go-toml/v2"
 )
+
+// Duration is a TOML-serialisable wrapper around time.Duration that parses
+// strings like "10m" / "1h30m" via UnmarshalText.
+type Duration time.Duration
+
+func (d *Duration) UnmarshalText(text []byte) error {
+	v, err := time.ParseDuration(string(text))
+	if err != nil {
+		return err
+	}
+	*d = Duration(v)
+	return nil
+}
 
 type Rule struct {
 	Name     string
@@ -25,7 +39,11 @@ type AgentConfig struct {
 type Defaults struct {
 	Delay   int
 	Enabled bool
-	LogFile string `toml:"log_file"`
+	Afk     bool
+	AfkIdle time.Duration `toml:"-"`
+	// AfkIdleRaw is the TOML source; copied into AfkIdle after validation.
+	AfkIdleRaw Duration `toml:"afk_idle"`
+	LogFile    string   `toml:"log_file"`
 }
 
 type Config struct {
@@ -66,6 +84,16 @@ func load(path string, required bool) (*Config, error) {
 
 	// Apply tilde expansion to paths
 	cfg.Defaults.LogFile = ExpandTilde(cfg.Defaults.LogFile)
+
+	// afk_idle: default 10 minutes when unset; negative is invalid.
+	if cfg.Defaults.AfkIdleRaw == 0 {
+		cfg.Defaults.AfkIdle = 10 * time.Minute
+	} else {
+		cfg.Defaults.AfkIdle = time.Duration(cfg.Defaults.AfkIdleRaw)
+	}
+	if cfg.Defaults.AfkIdle < 0 {
+		return nil, fmt.Errorf("defaults.afk_idle must be >= 0, got %s", cfg.Defaults.AfkIdle)
+	}
 
 	// Validate delay values
 	if cfg.Defaults.Delay < 0 {

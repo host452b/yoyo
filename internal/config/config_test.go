@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/host452b/yoyo/internal/config"
 )
@@ -145,5 +146,47 @@ func TestLoadRequired_ExistingFile_Works(t *testing.T) {
 	}
 	if cfg.Defaults.Delay != 2 {
 		t.Errorf("delay = %d, want 2", cfg.Defaults.Delay)
+	}
+}
+
+func TestLoad_AfkDefaultsOff(t *testing.T) {
+	path := writeConfig(t, "")
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Defaults.Afk {
+		t.Error("default afk = true, want false")
+	}
+	if cfg.Defaults.AfkIdle != 10*time.Minute {
+		t.Errorf("default afk_idle = %v, want 10m", cfg.Defaults.AfkIdle)
+	}
+}
+
+func TestLoad_AfkExplicit(t *testing.T) {
+	path := writeConfig(t, `
+[defaults]
+afk      = true
+afk_idle = "2m"
+`)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Defaults.Afk {
+		t.Error("afk = false, want true")
+	}
+	if cfg.Defaults.AfkIdle != 2*time.Minute {
+		t.Errorf("afk_idle = %v, want 2m", cfg.Defaults.AfkIdle)
+	}
+}
+
+func TestLoad_AfkIdle_Negative_ReturnsError(t *testing.T) {
+	path := writeConfig(t, `
+[defaults]
+afk_idle = "-30s"
+`)
+	if _, err := config.Load(path); err == nil {
+		t.Error("expected error for negative afk_idle, got nil")
 	}
 }
