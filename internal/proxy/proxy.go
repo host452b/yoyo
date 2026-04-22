@@ -155,9 +155,12 @@ func (p *Proxy) Run() error {
 	afkEnabled := cfg.AfkEnabled
 	var afkIdleTimer *time.Timer
 	var afkIdleTimerCh <-chan time.Time
+	var afkDeadline time.Time    // zero = idle timer inactive
+	var afkNudgedUntil time.Time // status-bar flash window after a fire
 
 	armAfk := func() {
 		if !afkEnabled || cfg.AfkIdle <= 0 {
+			afkDeadline = time.Time{}
 			return
 		}
 		if afkIdleTimer != nil {
@@ -165,6 +168,7 @@ func (p *Proxy) Run() error {
 		}
 		afkIdleTimer = time.NewTimer(cfg.AfkIdle)
 		afkIdleTimerCh = afkIdleTimer.C
+		afkDeadline = time.Now().Add(cfg.AfkIdle)
 	}
 	stopAfk := func() {
 		if afkIdleTimer != nil {
@@ -172,6 +176,7 @@ func (p *Proxy) Run() error {
 		}
 		afkIdleTimer = nil
 		afkIdleTimerCh = nil
+		afkDeadline = time.Time{}
 	}
 	armAfk()
 
@@ -259,6 +264,7 @@ func (p *Proxy) Run() error {
 
 			if afkIdleTimer != nil {
 				afkIdleTimer.Reset(cfg.AfkIdle)
+				afkDeadline = time.Now().Add(cfg.AfkIdle)
 			}
 
 			cfg.PTY.Write(data)
@@ -279,6 +285,7 @@ func (p *Proxy) Run() error {
 			cfg.Screen.Feed(data)
 			if afkIdleTimer != nil {
 				afkIdleTimer.Reset(cfg.AfkIdle)
+				afkDeadline = time.Now().Add(cfg.AfkIdle)
 			}
 			text := cfg.Screen.Text()
 
@@ -337,6 +344,17 @@ func (p *Proxy) Run() error {
 				cfg.StatusBar.SetCountdown(remaining)
 			}
 
+			if afkEnabled && !afkDeadline.IsZero() {
+				remaining := int(time.Until(afkDeadline).Seconds() + 0.5)
+				if remaining < 0 {
+					remaining = 0
+				}
+				nudged := time.Now().Before(afkNudgedUntil)
+				cfg.StatusBar.SetAfk(true, remaining, nudged)
+			} else {
+				cfg.StatusBar.SetAfk(false, 0, false)
+			}
+
 			out := cfg.StatusBar.WrapFrame(data)
 			stdout.Write(out)
 
@@ -381,6 +399,7 @@ func (p *Proxy) Run() error {
 					cfg.Log.Errorf("afk: failed to send continue: %v", err)
 				}
 			}
+			afkNudgedUntil = time.Now().Add(2 * time.Second)
 			armAfk()
 		}
 	}
