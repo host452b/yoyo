@@ -95,3 +95,62 @@ func TestContainsDangerousCommand_ReturnsExactMatch(t *testing.T) {
 		t.Errorf("match returned entire input: %q", matched)
 	}
 }
+
+// Regression: the safety scan must only consider the trailing active
+// prompt region. An approved `kubectl delete ns foo` lingering in
+// scrollback far above the current prompt must NOT block a subsequent
+// auto-approval on an unrelated, safe prompt.
+//
+// Before the fix, the safety guard read the full screen.Text() and
+// kept blocking every subsequent approval until the destructive line
+// scrolled off — a silent, cumulative false-positive that manifested
+// as "yoyo stopped auto-approving for no visible reason."
+func TestContainsDangerousCommand_IgnoresStaleScrollback(t *testing.T) {
+	// 30 lines of "safe" scrollback between a past kubectl delete and
+	// the current prompt. With a 20-line tail window, the kubectl line
+	// is outside the scan region.
+	lines := []string{"$ kubectl delete ns staging   # user approved this earlier"}
+	for i := 0; i < 30; i++ {
+		lines = append(lines, "namespace \"staging\" deleted")
+	}
+	// Current prompt is a safe codex invocation.
+	lines = append(lines,
+		"────────────────────",
+		" Bash command",
+		"   codex --help",
+		" Do you want to proceed?",
+		" ❯ 1. Yes",
+		"   2. No",
+		" Esc to cancel",
+	)
+	text := ""
+	for _, l := range lines {
+		text += l + "\n"
+	}
+	if hit, matched := detector.ContainsDangerousCommand(text); hit {
+		t.Errorf("stale scrollback leaked into safety scan; matched %q", matched)
+	}
+
+	// Sanity: if someone wants the full scan, the Full variant still sees it.
+	if hit, _ := detector.ContainsDangerousCommandFull(text); !hit {
+		t.Error("Full variant should still find kubectl delete anywhere in input")
+	}
+}
+
+// Complement: a dangerous command in the TAIL (inside the scan window)
+// must still be caught.
+func TestContainsDangerousCommand_DangerInTailStillCaught(t *testing.T) {
+	text := "some earlier stuff\n" +
+		"────────────────────\n" +
+		" Bash command\n" +
+		"   rm -rf /tmp/foo/*\n" +
+		" Do you want to proceed?\n" +
+		" ❯ 1. Yes\n" +
+		"   2. No\n" +
+		" Esc to cancel\n"
+	if hit, matched := detector.ContainsDangerousCommand(text); !hit {
+		t.Errorf("expected hit on `rm -rf /tmp/foo/*` in tail, got none (full: %q)", text)
+	} else if matched == "" {
+		t.Error("expected non-empty snippet")
+	}
+}

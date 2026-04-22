@@ -4,6 +4,31 @@ All notable changes to yoyo are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.5] — 2026-04-23
+
+### Fixed
+
+- **Safety guard no longer false-positives on stale scrollback**.
+  `ContainsDangerousCommand` previously scanned the full visible
+  screen, so a destructive command from earlier in the session that
+  the user had manually approved (e.g. `kubectl delete ns staging`)
+  would keep blocking every subsequent auto-approval until it
+  scrolled off-screen — manifesting as "yoyo silently stopped
+  auto-approving for no visible reason." The scan window is now
+  clamped to the trailing 20 lines (the active prompt area), matching
+  the fuzzy detector's last-15-lines policy. A new
+  `ContainsDangerousCommandFull` entry point preserves the
+  whole-input behaviour for callers that genuinely need it (tests,
+  future uses).
+
+  Added two regression tests in
+  `internal/detector/danger_test.go`:
+  - `TestContainsDangerousCommand_IgnoresStaleScrollback` — 30 lines
+    of benign output between a past `kubectl delete` and the current
+    prompt; must not block.
+  - `TestContainsDangerousCommand_DangerInTailStillCaught` —
+    destructive command inside the scan window must still match.
+
 ## [2.2.4] — 2026-04-22
 
 ### Added
