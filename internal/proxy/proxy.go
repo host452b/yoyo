@@ -59,6 +59,14 @@ type Config struct {
 	// paths: the Ctrl+Y q prefix command, and 3× Ctrl-C within 500ms.
 	// Typically set to func() { cmd.Process.Kill() }.
 	Kill func()
+
+	// Dump is the Ctrl+Y d callback. It collects a diagnostic snapshot
+	// of yoyo's state (version, runtime flags, agent info, current
+	// screen, config, log tail, filtered env) and writes it to a
+	// timestamped file under ~/.yoyo/dumps/. Returns the absolute path
+	// of the written file, or an error. The status bar briefly shows
+	// "dumped: <path>" so the user knows where to find it.
+	Dump func() (path string, err error)
 }
 
 // Proxy is the coordinator that routes bytes between stdin, child PTY, and stdout.
@@ -304,17 +312,16 @@ func (p *Proxy) Run() error {
 				}
 			}
 
-			// Handle Ctrl+Y a / Ctrl+Y f / Ctrl+Y q inline (rather than inside
-			// handlePrefix) because their state is local to Run. Covers two
-			// scenarios per letter:
+			// Handle Ctrl+Y a / f / q / d inline (rather than inside handlePrefix)
+			// because their state is local to Run. Covers two scenarios per letter:
 			//   (A) "\x19<letter>" arrives as one chunk from stdin
 			//   (B) "\x19" then "<letter>" arrive as separate chunks (prefixActive=true)
 			var toggleCmd byte
 			switch {
-			case len(data) >= 2 && data[0] == prefixByte && (data[1] == 'a' || data[1] == 'f' || data[1] == 'q'):
+			case len(data) >= 2 && data[0] == prefixByte && (data[1] == 'a' || data[1] == 'f' || data[1] == 'q' || data[1] == 'd'):
 				toggleCmd = data[1]
 				data = data[2:]
-			case prefixActive && len(data) > 0 && (data[0] == 'a' || data[0] == 'f' || data[0] == 'q'):
+			case prefixActive && len(data) > 0 && (data[0] == 'a' || data[0] == 'f' || data[0] == 'q' || data[0] == 'd'):
 				toggleCmd = data[0]
 				data = data[1:]
 			}
@@ -354,6 +361,25 @@ func (p *Proxy) Run() error {
 					}
 					if cfg.Kill != nil {
 						cfg.Kill()
+					}
+				case 'd':
+					// Write a diagnostic dump to ~/.yoyo/dumps/ and show the
+					// path in the status bar. Useful for capturing "why did
+					// yoyo do/not do X here?" situations for follow-up.
+					if cfg.Dump != nil {
+						if path, err := cfg.Dump(); err != nil {
+							cfg.StatusBar.SetRule("dump failed: " + err.Error())
+							if cfg.Log != nil {
+								cfg.Log.Errorf("dump: write failed: %v", err)
+							}
+						} else {
+							cfg.StatusBar.SetRule("dumped: " + path)
+							if cfg.Log != nil {
+								cfg.Log.Infof("dump: wrote %s", path)
+							}
+						}
+					} else if cfg.Log != nil {
+						cfg.Log.Errorf("dump: no callback configured")
 					}
 				}
 				stdout.Write(cfg.StatusBar.WrapFrame([]byte{}))

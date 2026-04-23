@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/host452b/yoyo/internal/agent"
 	"github.com/host452b/yoyo/internal/config"
 	"github.com/host452b/yoyo/internal/detector"
+	"github.com/host452b/yoyo/internal/dump"
 	"github.com/host452b/yoyo/internal/logger"
 	"github.com/host452b/yoyo/internal/memory"
 	"github.com/host452b/yoyo/internal/proxy"
@@ -105,6 +107,9 @@ RUNTIME CONTROLS  (Ctrl+Y is the prefix key)
   Ctrl+Y  f     Toggle fuzzy fallback on/off
   Ctrl+Y  q     Force-kill the child process (escape hatch for wedged
                 agents). Also triggered by 3x Ctrl-C within 500 ms.
+  Ctrl+Y  d     Write a diagnostic dump to ~/.yoyo/dumps/ capturing the
+                current screen, state, config, log tail, and env. Share
+                with maintainers to reproduce bugs.
 
   Pressing any non-escape key while the countdown is running cancels
   the pending approval, letting you inspect or respond manually.
@@ -359,8 +364,48 @@ func main() {
 	})
 	defer stopResize2()
 
-	// Run proxy
-	pr := proxy.New(proxy.Config{
+	// Run proxy.
+	//
+	// `pr` is forward-declared so the Dump closure can reference it
+	// (the callback is invoked at runtime by the Ctrl+Y d handler,
+	// long after pr has been assigned — the closure captures the
+	// variable, not the nil initial value).
+	var pr *proxy.Proxy
+	dumpsDir := filepath.Join(filepath.Dir(eff.LogFile), "dumps")
+	configPathExpanded := config.ExpandTilde(*cfgPath)
+	if _, err := os.Stat(configPathExpanded); err != nil {
+		// If no config file loaded, don't reference a non-existent path.
+		configPathExpanded = ""
+	}
+	dumpFn := func() (string, error) {
+		snap := dump.Snapshot{
+			Version:       version,
+			AgentCommand:  strings.Join(args, " "),
+			AgentKind:     kind,
+			PTYCols:       cols,
+			PTYRows:       rows,
+			ScreenText:    scr.Text(),
+			ConfigPath:    configPathExpanded,
+			LogPath:       eff.LogFile,
+			Delay:         eff.Delay,
+			Enabled:       cfg.Defaults.Enabled,
+			DryRun:        *dryRun,
+			AfkEnabled:    eff.Afk,
+			AfkIdle:       eff.AfkIdle,
+			FuzzyEnabled:  eff.Fuzzy,
+			FuzzyStable:   eff.FuzzyStable,
+			SafetyEnabled: eff.Safety,
+		}
+		if cmd.Process != nil {
+			snap.AgentPID = cmd.Process.Pid
+		}
+		if pr != nil {
+			snap.ApprovalCount = pr.ApprovalCount()
+		}
+		return dump.Write(snap, dumpsDir)
+	}
+
+	pr = proxy.New(proxy.Config{
 		PTY:        p,
 		RuleChain:  chain,
 		Memory:     memory.New(),
@@ -384,6 +429,7 @@ func main() {
 				_ = cmd.Process.Kill()
 			}
 		},
+		Dump: dumpFn,
 	})
 
 	if err := pr.Run(); err != nil {

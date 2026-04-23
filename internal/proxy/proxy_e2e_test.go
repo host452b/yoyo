@@ -1034,6 +1034,100 @@ func makeProxyWithKill(t *testing.T, counter *int64) (*proxy.Proxy, *fakePTY, *f
 	return pr, pty, stdin
 }
 
+// 34a. Ctrl+Y d triggers the diagnostic-dump callback and surfaces the
+//      returned path on the status bar.
+func TestProxy_E2E_CtrlYD_DumpCallback(t *testing.T) {
+	log, err := logger.New(t.TempDir() + "/test.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { log.Close() })
+	pty := newFakePTY()
+	stdin := newFakeStdin()
+	sb := statusbar.New(24, 80, true, 0)
+
+	var dumpCalls int64
+	pr := proxy.New(proxy.Config{
+		PTY:       pty,
+		Stdin:     stdin,
+		Stdout:    io.Discard,
+		RuleChain: detector.RuleChain{agent.KindClaude.Detector()},
+		Memory:    memory.New(),
+		StatusBar: sb,
+		Log:       log,
+		Term:      term.NewNoOp(),
+		Screen:    screen.New(80, 24),
+		AgentKind: agent.KindClaude,
+		Enabled:   true,
+		Dump: func() (string, error) {
+			atomic.AddInt64(&dumpCalls, 1)
+			return "/tmp/yoyo-dump-test.md", nil
+		},
+	})
+	defer stdin.close()
+	done := runProxy(pr)
+
+	stdin.send("\x19d")
+
+	// Poll for the dump to land.
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if atomic.LoadInt64(&dumpCalls) == 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := atomic.LoadInt64(&dumpCalls); got != 1 {
+		t.Errorf("expected 1 dump call, got %d", got)
+	}
+
+	pty.close()
+	<-done
+}
+
+// 34b. If Dump returns an error, the proxy keeps running and surfaces
+//      the failure on the status bar rather than crashing.
+func TestProxy_E2E_CtrlYD_DumpErrorIsNonFatal(t *testing.T) {
+	log, err := logger.New(t.TempDir() + "/test.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { log.Close() })
+	pty := newFakePTY()
+	stdin := newFakeStdin()
+	pr := proxy.New(proxy.Config{
+		PTY:       pty,
+		Stdin:     stdin,
+		Stdout:    io.Discard,
+		RuleChain: detector.RuleChain{agent.KindClaude.Detector()},
+		Memory:    memory.New(),
+		StatusBar: statusbar.New(24, 80, true, 0),
+		Log:       log,
+		Term:      term.NewNoOp(),
+		Screen:    screen.New(80, 24),
+		AgentKind: agent.KindClaude,
+		Enabled:   true,
+		Dump: func() (string, error) {
+			return "", fmt.Errorf("simulated disk full")
+		},
+	})
+	defer stdin.close()
+	done := runProxy(pr)
+
+	stdin.send("\x19d")
+	time.Sleep(100 * time.Millisecond)
+
+	// Proxy must still be running.
+	select {
+	case err := <-done:
+		t.Fatalf("proxy exited unexpectedly after failing dump: %v", err)
+	default:
+	}
+
+	pty.close()
+	<-done
+}
+
 // 34. Ctrl+Y q triggers the force-kill callback.
 func TestProxy_E2E_CtrlYQ_ForceKill(t *testing.T) {
 	var kills int64

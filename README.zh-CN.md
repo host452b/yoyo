@@ -205,10 +205,27 @@ yoyo [flags] <command> [args...]
 | `a` | 切换 AFK 模式 开/关（与自动批准独立） |
 | `f` | 切换 fuzzy 保底检测 开/关 |
 | `q` | 强制杀掉子进程（agent 卡死时的逃生门） |
+| `d` | 写一份诊断 dump 到 `~/.yoyo/dumps/`（详见 [诊断 dump](#诊断-dump)） |
 
 **取消当前倒计时**：倒计时期间按任意非 escape 键即可。
 
-**强杀子进程**：当 agent 自己的 Ctrl-C 处理逻辑卡死（例如 Claude Code 停在 "Press Ctrl-C again to exit" 但再按也没反应），用 `Ctrl+Y  q`，**或**在 500 ms 内**连按 3 次 `Ctrl-C`**。两种都是走系统级 `kill(9)` 绕开 PTY 字节流，yoyo 自己也会随后干净退出。
+**强杀子进程**：当 agent 自己的 Ctrl-C 处理逻辑卡死（例如 Claude Code 停在 "Press Ctrl-C again to exit" 但再按也没反应），用 `Ctrl+Y  q`，**或**在 **1 秒内连按 3 次 `Ctrl-C`**。两种都是走系统级 `kill(9)` 绕开 PTY 字节流，yoyo 自己也会随后干净退出。
+
+### 诊断 dump
+
+按 `Ctrl+Y  d`，yoyo 会把当前一切运行时状态冻成一份 Markdown 文件写到 `~/.yoyo/dumps/yoyo-<时间戳>.md`，状态栏短暂显示该路径。dump 包含：
+
+- yoyo 版本、Go 运行时、OS/架构、TERM、是否在 tmux 里
+- 运行标志（delay、afk/fuzzy/safety 开关、dry-run、本会话已 approve 次数）
+- agent 命令、kind、PID、PTY 几何
+- **当前屏幕** —— yoyo 看到的完整 vt10x 渲染内容
+- 配置文件内容（`response = "…"` 字段自动 redact）
+- 日志最后 100 行
+- 环境变量（key 名含 TOKEN / PASSWORD / KEY / SECRET / API / CREDENTIAL / AUTH / BEARER / SESSION_ID 的都 redact 值）
+
+**使用场景**：自动 y 没按预期触发的时候，立刻按 `Ctrl+Y d` 把 dump 发给维护者。屏幕那段通常足够把"这个场景不灵"直接转成一个回归测试。
+
+**屏幕段不会 redact**——这是它存在的全部意义。分享前自己过一眼，里面可能有路径、命令输出、聊天片段。
 
 ### AFK 模式
 

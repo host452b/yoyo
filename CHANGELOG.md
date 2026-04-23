@@ -4,6 +4,29 @@ All notable changes to yoyo are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] — 2026-04-23
+
+### Added
+
+- **Diagnostic dumps via `Ctrl+Y  d`.** Freezes everything yoyo knew
+  about its state at that moment into a timestamped Markdown file
+  under `~/.yoyo/dumps/yoyo-<ts>.md`: yoyo version, Go runtime,
+  OS/arch, TERM, tmux flag, runtime flags (delay, afk/fuzzy/safety,
+  dry-run, approval count), agent command/kind/PID/PTY geometry,
+  current vt10x-rendered screen, config content, last 100 log lines,
+  filtered environment. Keys with secret-looking names (TOKEN,
+  PASSWORD, KEY, SECRET, API_*, CREDENTIAL, AUTH, BEARER,
+  SESSION_ID) have their values replaced with `<redacted>`;
+  `response = "…"` config lines are redacted uniformly. The screen
+  content is deliberately NOT redacted — that's the entire point.
+  Status bar briefly shows `dumped: <path>`.
+  - New package `internal/dump`, 4 unit tests for redaction + file
+    shape.
+  - Two new proxy E2E tests: `TestProxy_E2E_CtrlYD_DumpCallback`
+    (callback fires exactly once per keypress) and
+    `TestProxy_E2E_CtrlYD_DumpErrorIsNonFatal` (error path keeps
+    proxy running).
+
 ## [2.2.5] — 2026-04-23
 
 ### Fixed

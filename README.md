@@ -233,14 +233,38 @@ The prefix key is **Ctrl+Y**. Press Ctrl+Y, then:
 | `a` | Toggle AFK mode on/off (independent of auto-approve) |
 | `f` | Toggle fuzzy fallback on/off |
 | `q` | Force-kill the child process (escape hatch for wedged agents) |
+| `d` | Write a diagnostic dump to `~/.yoyo/dumps/` (see [Diagnostic dumps](#diagnostic-dumps)) |
 
 **Cancel pending approval:** press any non-escape key while the countdown is running.
 
 **Force-kill the child** when the agent's TUI has wedged its own Ctrl-C handling
 (e.g. Claude Code's "Press Ctrl-C again to exit" stuck state): press
-`Ctrl+Y  q`, or tap `Ctrl-C` three times within 500 ms. Both trigger an
+`Ctrl+Y  q`, or tap `Ctrl-C` three times within 1 second. Both trigger an
 OS-level `kill(9)` on the child, bypassing the PTY byte stream. yoyo itself
 exits cleanly afterward.
+
+### Diagnostic dumps
+
+Press `Ctrl+Y  d` to freeze everything yoyo knew about its state at that
+moment into a single Markdown file under `~/.yoyo/dumps/yoyo-<timestamp>.md`.
+The status bar briefly shows the file path. The dump includes:
+
+- yoyo version, Go runtime, OS/arch, TERM, tmux presence
+- runtime flags (delay, afk/fuzzy/safety on/off, dry-run, approvals count)
+- agent command, kind, PID, PTY geometry
+- **current screen** — the full vt10x-rendered view yoyo is looking at
+- config file (`response = "…"` fields auto-redacted)
+- last 100 log lines
+- environment variables (TOKEN / PASSWORD / KEY / SECRET / API / CREDENTIAL /
+  AUTH / BEARER / SESSION_ID keys redacted)
+
+Use case: when an auto-approve doesn't fire as expected, hit `Ctrl+Y d` and
+attach the file to your bug report. The screen section is often enough to
+turn "this case failed" into a one-shot regression test.
+
+**The screen section is not redacted** — it's the entire point. Review the
+dump before sharing with strangers; paths, command output, and chat
+fragments may be in there.
 
 ### AFK mode
 
