@@ -253,14 +253,16 @@ The status bar briefly shows the file path. The dump includes:
 - runtime flags (delay, afk/fuzzy/safety on/off, dry-run, approvals count)
 - agent command, kind, PID, PTY geometry
 - **current screen** — the full vt10x-rendered view yoyo is looking at
+- detector diagnostics — every active rule's match/no-match result, fuzzy result,
+  safety result, and a line-numbered repro screen for regression tests
 - config file (`response = "…"` fields auto-redacted)
 - last 100 log lines
 - environment variables (TOKEN / PASSWORD / KEY / SECRET / API / CREDENTIAL /
   AUTH / BEARER / SESSION_ID keys redacted)
 
 Use case: when an auto-approve doesn't fire as expected, hit `Ctrl+Y d` and
-attach the file to your bug report. The screen section is often enough to
-turn "this case failed" into a one-shot regression test.
+attach the file to your bug report. The detector diagnostics and line-numbered
+screen are designed to turn "this case failed" into a one-shot regression test.
 
 **The screen section is not redacted** — it's the entire point. Review the
 dump before sharing with strangers; paths, command output, and chat

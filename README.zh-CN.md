@@ -219,11 +219,12 @@ yoyo [flags] <command> [args...]
 - 运行标志（delay、afk/fuzzy/safety 开关、dry-run、本会话已 approve 次数）
 - agent 命令、kind、PID、PTY 几何
 - **当前屏幕** —— yoyo 看到的完整 vt10x 渲染内容
+- detector 诊断 —— 每条当前启用规则的命中/未命中结果、fuzzy 结果、safety 结果，以及带行号的复现屏幕文本
 - 配置文件内容（`response = "…"` 字段自动 redact）
 - 日志最后 100 行
 - 环境变量（key 名含 TOKEN / PASSWORD / KEY / SECRET / API / CREDENTIAL / AUTH / BEARER / SESSION_ID 的都 redact 值）
 
-**使用场景**：自动 y 没按预期触发的时候，立刻按 `Ctrl+Y d` 把 dump 发给维护者。屏幕那段通常足够把"这个场景不灵"直接转成一个回归测试。
+**使用场景**：自动 y 没按预期触发的时候，立刻按 `Ctrl+Y d` 把 dump 发给维护者。detector 诊断和带行号屏幕文本就是为了把"这个场景不灵"直接转成一个回归测试。
 
 **屏幕段不会 redact**——这是它存在的全部意义。分享前自己过一眼，里面可能有路径、命令输出、聊天片段。
 

@@ -21,7 +21,32 @@ import (
 	"time"
 
 	"github.com/host452b/yoyo/internal/agent"
+	"github.com/host452b/yoyo/internal/detector"
 )
+
+// DetectorProbe names a detector from the active rule chain so dumps can show
+// how each rule evaluated the exact screen yoyo was seeing.
+type DetectorProbe struct {
+	Label    string
+	Detector detector.Detector
+}
+
+// DetectorDiagnostic is one detector's point-in-time evaluation result.
+type DetectorDiagnostic struct {
+	Label    string
+	Matched  bool
+	RuleName string
+	Response string
+	Hash     string
+}
+
+// Diagnostics captures detector/fallback/safety decisions for a screen.
+type Diagnostics struct {
+	Detectors     []DetectorDiagnostic
+	FuzzyMatched  bool
+	SafetyBlocked bool
+	SafetySnippet string
+}
 
 // Snapshot is the subset of yoyo's runtime state that a dump captures.
 // All fields are optional; zero values render as "n/a" or are omitted.
@@ -35,7 +60,8 @@ type Snapshot struct {
 	PTYCols int
 	PTYRows int
 
-	ScreenText string // current vt10x-rendered visible screen
+	ScreenText  string // current vt10x-rendered visible screen
+	Diagnostics *Diagnostics
 
 	// ConfigPath is read during Write to include the raw TOML (with
 	// response fields redacted). Empty string = no config loaded.
@@ -54,6 +80,33 @@ type Snapshot struct {
 	FuzzyEnabled  bool
 	FuzzyStable   time.Duration
 	SafetyEnabled bool
+}
+
+// NewDiagnostics evaluates probes, fuzzy fallback, and safety guard against the
+// exact screen text used in a dump.
+func NewDiagnostics(screenText string, probes []DetectorProbe) Diagnostics {
+	out := Diagnostics{
+		Detectors:    make([]DetectorDiagnostic, 0, len(probes)),
+		FuzzyMatched: detector.FuzzyMatch(screenText),
+	}
+	for i, probe := range probes {
+		label := probe.Label
+		if label == "" {
+			label = fmt.Sprintf("detector %d", i+1)
+		}
+		diag := DetectorDiagnostic{Label: label}
+		if probe.Detector != nil {
+			if match := probe.Detector.Detect(screenText); match != nil {
+				diag.Matched = true
+				diag.RuleName = match.RuleName
+				diag.Response = describeResponse(match.Response)
+				diag.Hash = match.Hash
+			}
+		}
+		out.Detectors = append(out.Detectors, diag)
+	}
+	out.SafetyBlocked, out.SafetySnippet = detector.ContainsDangerousCommand(screenText)
+	return out
 }
 
 // Write serialises s as Markdown into a timestamped file under dir.
@@ -140,6 +193,11 @@ func writeMarkdown(w io.Writer, s Snapshot) error {
 	fmt.Fprintln(bw, "```")
 	fmt.Fprintln(bw)
 
+	if s.Diagnostics != nil {
+		writeDetectorDiagnostics(bw, *s.Diagnostics)
+	}
+	writeLineNumberedScreen(bw, s.ScreenText)
+
 	// --- Config -----------------------------------------------------
 	if s.ConfigPath != "" {
 		if data, err := os.ReadFile(s.ConfigPath); err == nil {
@@ -174,6 +232,71 @@ func writeMarkdown(w io.Writer, s Snapshot) error {
 	fmt.Fprintln(bw, "```")
 
 	return bw.Flush()
+}
+
+func writeDetectorDiagnostics(w io.Writer, d Diagnostics) {
+	fmt.Fprintln(w, "## Detector diagnostics")
+	fmt.Fprintln(w)
+	if len(d.Detectors) == 0 {
+		fmt.Fprintln(w, "- detectors: none")
+	} else {
+		for _, probe := range d.Detectors {
+			if !probe.Matched {
+				fmt.Fprintf(w, "- %s: no match\n", probe.Label)
+				continue
+			}
+			fmt.Fprintf(w, "- %s: matched\n", probe.Label)
+			fmt.Fprintf(w, "  - rule: %s\n", probe.RuleName)
+			fmt.Fprintf(w, "  - response: %s\n", probe.Response)
+			fmt.Fprintf(w, "  - hash: `%s`\n", probe.Hash)
+		}
+	}
+	fmt.Fprintf(w, "- fuzzy: matched=%v\n", d.FuzzyMatched)
+	fmt.Fprintf(w, "- safety: blocked=%v\n", d.SafetyBlocked)
+	if d.SafetyBlocked {
+		fmt.Fprintf(w, "  - snippet: `%s`\n", d.SafetySnippet)
+	}
+	fmt.Fprintln(w)
+}
+
+func writeLineNumberedScreen(w io.Writer, screenText string) {
+	fmt.Fprintln(w, "## Repro screen (line-numbered)")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "```text")
+	fmt.Fprintln(w, numberedScreen(screenText))
+	fmt.Fprintln(w, "```")
+	fmt.Fprintln(w)
+}
+
+func numberedScreen(screenText string) string {
+	text := strings.TrimRight(screenText, "\n")
+	if text == "" {
+		return "   1 | "
+	}
+	lines := strings.Split(text, "\n")
+	var b strings.Builder
+	for i, line := range lines {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		fmt.Fprintf(&b, "%4d | %s", i+1, line)
+	}
+	return b.String()
+}
+
+func describeResponse(response string) string {
+	switch response {
+	case "\r":
+		return "enter"
+	case "y\r":
+		return "y + enter"
+	case "n\r":
+		return "n + enter"
+	case "p\r":
+		return "p + enter"
+	default:
+		return fmt.Sprintf("<%d bytes, redacted>", len(response))
+	}
 }
 
 // --- exported helpers for testing ------------------------------------------

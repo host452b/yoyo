@@ -171,13 +171,13 @@ func main() {
 	}
 
 	var (
-		delay      = flag.Int("delay", -1, "approval delay in seconds (0=immediate, -1=from config)")
-		logPath    = flag.String("log", "", "log file path (default from config)")
-		cfgPath    = flag.String("config", config.DefaultPath(), "config file path")
-		showVer    = flag.Bool("v", false, "print version and exit")
-		dryRun     = flag.Bool("dry-run", false, "detect prompts but do not send approvals")
-		afk        = flag.Bool("afk", false, "enable AFK mode (idle-timer nudges)")
-		afkIdle    = flag.Duration("afk-idle", 10*time.Minute, "AFK idle threshold")
+		delay       = flag.Int("delay", -1, "approval delay in seconds (0=immediate, -1=from config)")
+		logPath     = flag.String("log", "", "log file path (default from config)")
+		cfgPath     = flag.String("config", config.DefaultPath(), "config file path")
+		showVer     = flag.Bool("v", false, "print version and exit")
+		dryRun      = flag.Bool("dry-run", false, "detect prompts but do not send approvals")
+		afk         = flag.Bool("afk", false, "enable AFK mode (idle-timer nudges)")
+		afkIdle     = flag.Duration("afk-idle", 10*time.Minute, "AFK idle threshold")
 		fuzzy       = flag.Bool("fuzzy", false, "enable generic fuzzy fallback detector")
 		fuzzyStable = flag.Duration("fuzzy-stable", 3*time.Second, "screen-stable window before fuzzy attempts vocabulary match")
 		noSafety    = flag.Bool("no-safety", false, "disable the deletion-command safety guard (default: guard enabled)")
@@ -257,6 +257,11 @@ func main() {
 
 	// Build rule chain: agent rules → global rules → built-in detector
 	var chain detector.RuleChain
+	var dumpProbes []dump.DetectorProbe
+	appendDetector := func(label string, d detector.Detector) {
+		chain = append(chain, d)
+		dumpProbes = append(dumpProbes, dump.DetectorProbe{Label: label, Detector: d})
+	}
 	if agentCfg, ok := cfg.Agents[kind.String()]; ok {
 		for _, r := range agentCfg.Rules {
 			name := r.Name
@@ -268,7 +273,7 @@ func main() {
 				fmt.Fprintf(os.Stderr, "invalid rule %q: %v\n", name, err)
 				os.Exit(1)
 			}
-			chain = append(chain, d)
+			appendDetector("agent rule: "+name, d)
 		}
 	}
 	for _, r := range cfg.Rules {
@@ -281,9 +286,9 @@ func main() {
 			fmt.Fprintf(os.Stderr, "invalid rule %q: %v\n", name, err)
 			os.Exit(1)
 		}
-		chain = append(chain, d)
+		appendDetector("global rule: "+name, d)
 	}
-	chain = append(chain, kind.Detector())
+	appendDetector("built-in: "+kind.String(), kind.Detector())
 
 	// Setup terminal raw mode
 	t := term.New(os.Stdin)
@@ -365,60 +370,55 @@ func main() {
 	defer stopResize2()
 
 	// Run proxy.
-	//
-	// `pr` is forward-declared so the Dump closure can reference it
-	// (the callback is invoked at runtime by the Ctrl+Y d handler,
-	// long after pr has been assigned — the closure captures the
-	// variable, not the nil initial value).
-	var pr *proxy.Proxy
 	dumpsDir := filepath.Join(filepath.Dir(eff.LogFile), "dumps")
 	configPathExpanded := config.ExpandTilde(*cfgPath)
 	if _, err := os.Stat(configPathExpanded); err != nil {
 		// If no config file loaded, don't reference a non-existent path.
 		configPathExpanded = ""
 	}
-	dumpFn := func() (string, error) {
+	dumpFn := func(state proxy.RuntimeState) (string, error) {
+		screenText := scr.Text()
+		diagnostics := dump.NewDiagnostics(screenText, dumpProbes)
 		snap := dump.Snapshot{
 			Version:       version,
 			AgentCommand:  strings.Join(args, " "),
-			AgentKind:     kind,
+			AgentKind:     state.AgentKind,
 			PTYCols:       cols,
 			PTYRows:       rows,
-			ScreenText:    scr.Text(),
+			ScreenText:    screenText,
+			Diagnostics:   &diagnostics,
 			ConfigPath:    configPathExpanded,
 			LogPath:       eff.LogFile,
-			Delay:         eff.Delay,
-			Enabled:       cfg.Defaults.Enabled,
-			DryRun:        *dryRun,
-			AfkEnabled:    eff.Afk,
-			AfkIdle:       eff.AfkIdle,
-			FuzzyEnabled:  eff.Fuzzy,
-			FuzzyStable:   eff.FuzzyStable,
-			SafetyEnabled: eff.Safety,
+			Delay:         state.Delay,
+			Enabled:       state.Enabled,
+			DryRun:        state.DryRun,
+			AfkEnabled:    state.AfkEnabled,
+			AfkIdle:       state.AfkIdle,
+			FuzzyEnabled:  state.FuzzyEnabled,
+			FuzzyStable:   state.FuzzyStable,
+			SafetyEnabled: state.SafetyEnabled,
+			ApprovalCount: state.ApprovalCount,
 		}
 		if cmd.Process != nil {
 			snap.AgentPID = cmd.Process.Pid
 		}
-		if pr != nil {
-			snap.ApprovalCount = pr.ApprovalCount()
-		}
 		return dump.Write(snap, dumpsDir)
 	}
 
-	pr = proxy.New(proxy.Config{
-		PTY:        p,
-		RuleChain:  chain,
-		Memory:     memory.New(),
-		StatusBar:  sb,
-		Log:        log,
-		Term:       t,
-		Screen:     scr,
-		AgentKind:  kind,
-		Delay:      eff.Delay,
-		Enabled:    cfg.Defaults.Enabled,
-		DryRun:     *dryRun,
-		AfkEnabled: eff.Afk,
-		AfkIdle:    eff.AfkIdle,
+	pr := proxy.New(proxy.Config{
+		PTY:          p,
+		RuleChain:    chain,
+		Memory:       memory.New(),
+		StatusBar:    sb,
+		Log:          log,
+		Term:         t,
+		Screen:       scr,
+		AgentKind:    kind,
+		Delay:        eff.Delay,
+		Enabled:      cfg.Defaults.Enabled,
+		DryRun:       *dryRun,
+		AfkEnabled:   eff.Afk,
+		AfkIdle:      eff.AfkIdle,
 		FuzzyEnabled: eff.Fuzzy,
 		FuzzyStable:  eff.FuzzyStable,
 

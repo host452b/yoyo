@@ -62,7 +62,7 @@ func (f *fakePTY) written() string {
 // fakeStdin injects keystrokes into the proxy's stdin path.
 type fakeStdin struct{ ch chan []byte }
 
-func newFakeStdin() *fakeStdin          { return &fakeStdin{ch: make(chan []byte, 64)} }
+func newFakeStdin() *fakeStdin { return &fakeStdin{ch: make(chan []byte, 64)} }
 func (f *fakeStdin) Read(b []byte) (int, error) {
 	data, ok := <-f.ch
 	if !ok {
@@ -422,11 +422,11 @@ func TestProxy_E2E_NonStandardScreenSizes(t *testing.T) {
 	sizes := []struct {
 		cols, rows int
 	}{
-		{120, 40},  // wide tmux pane
-		{200, 50},  // ultra-wide monitor
-		{60, 20},   // narrow tmux split
-		{132, 43},  // classic VT132
-		{40, 15},   // very narrow pane
+		{120, 40}, // wide tmux pane
+		{200, 50}, // ultra-wide monitor
+		{60, 20},  // narrow tmux split
+		{132, 43}, // classic VT132
+		{40, 15},  // very narrow pane
 	}
 	for _, sz := range sizes {
 		name := fmt.Sprintf("%dx%d", sz.cols, sz.rows)
@@ -785,7 +785,7 @@ func TestProxy_E2E_FuzzyToggleViaPrefix(t *testing.T) {
 
 // ── Rigorous edge-case tests (v2.1.0 hardening) ─────────────────────────────
 
-// 27. Toggling AFK OFF mid-countdown cancels the pending fire, not just
+//  27. Toggling AFK OFF mid-countdown cancels the pending fire, not just
 //     future ones. Confirms stopAfk() actually stops the armed timer.
 func TestProxy_E2E_AfkToggleOffCancelsPendingFire(t *testing.T) {
 	pr, pty, stdin := makeProxyWithAfk(t, 250*time.Millisecond, false)
@@ -805,7 +805,7 @@ func TestProxy_E2E_AfkToggleOffCancelsPendingFire(t *testing.T) {
 	<-done
 }
 
-// 28. Fuzzy stability timer must reset whenever the screen hash changes
+//  28. Fuzzy stability timer must reset whenever the screen hash changes
 //     within the stable window. A flicker of new output right before the
 //     window expires should push the match to the next stable window.
 func TestProxy_E2E_FuzzyStabilityResetsOnChange(t *testing.T) {
@@ -832,7 +832,7 @@ func TestProxy_E2E_FuzzyStabilityResetsOnChange(t *testing.T) {
 	<-done
 }
 
-// 29. Fuzzy matches must respect -delay like any other detector. A match
+//  29. Fuzzy matches must respect -delay like any other detector. A match
 //     with Delay=1 must NOT fire immediately; it must wait ~1 second.
 func TestProxy_E2E_FuzzyRespectsDelay(t *testing.T) {
 	log, err := logger.New(t.TempDir() + "/test.log")
@@ -877,7 +877,7 @@ func TestProxy_E2E_FuzzyRespectsDelay(t *testing.T) {
 	<-done
 }
 
-// 30. When a specific detector matches, fuzzy MUST NOT also fire. The
+//  30. When a specific detector matches, fuzzy MUST NOT also fire. The
 //     specific detector owns the approval; fuzzy's stability timer either
 //     never arms (screen kept changing) or arms but finds the hash already
 //     approved via approvedHash dedup.
@@ -968,7 +968,7 @@ const claudeDeletePrompt = "─────────────────�
 	" Run: rm -rf /tmp/work-area\r\n" +
 	" Then run: rm -rf /\r\n\r\n 1. Yes\r\n 2. No\r\n\r\n Esc to cancel\r\n"
 
-// 31. Safety ON: specific detector refuses to auto-approve when the
+//  31. Safety ON: specific detector refuses to auto-approve when the
 //     prompt contains a deletion-class command.
 func TestProxy_E2E_SafetyBlocksClaudeApprovalWithDanger(t *testing.T) {
 	pr, pty, stdin := makeProxyWithSafety(t, true)
@@ -985,7 +985,7 @@ func TestProxy_E2E_SafetyBlocksClaudeApprovalWithDanger(t *testing.T) {
 	<-done
 }
 
-// 32. Safety OFF (-no-safety): same prompt approves as usual. Proves the
+//  32. Safety OFF (-no-safety): same prompt approves as usual. Proves the
 //     opt-out actually opts out, and that the danger content alone doesn't
 //     block approval without the flag.
 func TestProxy_E2E_NoSafetyFlagPermitsApproval(t *testing.T) {
@@ -1035,7 +1035,8 @@ func makeProxyWithKill(t *testing.T, counter *int64) (*proxy.Proxy, *fakePTY, *f
 }
 
 // 34a. Ctrl+Y d triggers the diagnostic-dump callback and surfaces the
-//      returned path on the status bar.
+//
+//	returned path on the status bar.
 func TestProxy_E2E_CtrlYD_DumpCallback(t *testing.T) {
 	log, err := logger.New(t.TempDir() + "/test.log")
 	if err != nil {
@@ -1059,7 +1060,7 @@ func TestProxy_E2E_CtrlYD_DumpCallback(t *testing.T) {
 		Screen:    screen.New(80, 24),
 		AgentKind: agent.KindClaude,
 		Enabled:   true,
-		Dump: func() (string, error) {
+		Dump: func(proxy.RuntimeState) (string, error) {
 			atomic.AddInt64(&dumpCalls, 1)
 			return "/tmp/yoyo-dump-test.md", nil
 		},
@@ -1085,8 +1086,86 @@ func TestProxy_E2E_CtrlYD_DumpCallback(t *testing.T) {
 	<-done
 }
 
+// 34a.1. Dump receives the proxy's current runtime toggles, not only startup config.
+func TestProxy_E2E_CtrlYD_DumpReceivesCurrentRuntimeState(t *testing.T) {
+	log, err := logger.New(t.TempDir() + "/test.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { log.Close() })
+	pty := newFakePTY()
+	stdin := newFakeStdin()
+	gotState := make(chan proxy.RuntimeState, 1)
+	pr := proxy.New(proxy.Config{
+		PTY:           pty,
+		Stdin:         stdin,
+		Stdout:        io.Discard,
+		RuleChain:     detector.RuleChain{agent.KindClaude.Detector()},
+		Memory:        memory.New(),
+		StatusBar:     statusbar.New(24, 80, true, 3),
+		Log:           log,
+		Term:          term.NewNoOp(),
+		Screen:        screen.New(80, 24),
+		AgentKind:     agent.KindClaude,
+		Delay:         3,
+		Enabled:       true,
+		AfkEnabled:    false,
+		AfkIdle:       10 * time.Minute,
+		FuzzyEnabled:  false,
+		FuzzyStable:   3 * time.Second,
+		SafetyEnabled: true,
+		Dump: func(state proxy.RuntimeState) (string, error) {
+			gotState <- state
+			return "/tmp/yoyo-dump-test.md", nil
+		},
+	})
+	defer stdin.close()
+	done := runProxy(pr)
+
+	stdin.send("\x190") // off
+	stdin.send("\x19a") // afk on
+	stdin.send("\x19f") // fuzzy on
+	stdin.send("\x192") // delay=2 and re-enable
+	stdin.send("\x19d")
+
+	var state proxy.RuntimeState
+	select {
+	case state = <-gotState:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for dump state")
+	}
+	if !state.Enabled {
+		t.Error("expected dump state to reflect re-enabled auto-approve")
+	}
+	if state.Delay != 2 {
+		t.Errorf("Delay = %d, want 2", state.Delay)
+	}
+	if !state.AfkEnabled {
+		t.Error("expected dump state to reflect AFK toggle")
+	}
+	if !state.FuzzyEnabled {
+		t.Error("expected dump state to reflect fuzzy toggle")
+	}
+	if state.AfkIdle != 10*time.Minute {
+		t.Errorf("AfkIdle = %s, want 10m", state.AfkIdle)
+	}
+	if state.FuzzyStable != 3*time.Second {
+		t.Errorf("FuzzyStable = %s, want 3s", state.FuzzyStable)
+	}
+	if !state.SafetyEnabled {
+		t.Error("expected dump state to include safety flag")
+	}
+	if state.AgentKind != agent.KindClaude {
+		t.Errorf("AgentKind = %s, want claude", state.AgentKind)
+	}
+
+	pty.close()
+	<-done
+}
+
 // 34b. If Dump returns an error, the proxy keeps running and surfaces
-//      the failure on the status bar rather than crashing.
+//
+//	the failure on the status bar rather than crashing.
 func TestProxy_E2E_CtrlYD_DumpErrorIsNonFatal(t *testing.T) {
 	log, err := logger.New(t.TempDir() + "/test.log")
 	if err != nil {
@@ -1107,7 +1186,7 @@ func TestProxy_E2E_CtrlYD_DumpErrorIsNonFatal(t *testing.T) {
 		Screen:    screen.New(80, 24),
 		AgentKind: agent.KindClaude,
 		Enabled:   true,
-		Dump: func() (string, error) {
+		Dump: func(proxy.RuntimeState) (string, error) {
 			return "", fmt.Errorf("simulated disk full")
 		},
 	})
@@ -1178,7 +1257,7 @@ func TestProxy_E2E_TripleCtrlC_ForceKill(t *testing.T) {
 	<-done
 }
 
-// 36. Ctrl-C hits spaced > 500 ms apart must NOT trigger force-kill. This
+//  36. Ctrl-C hits spaced > 500 ms apart must NOT trigger force-kill. This
 //     locks in the sliding-window semantics: a user who absent-mindedly
 //     taps Ctrl-C occasionally shouldn't accidentally kill the agent.
 func TestProxy_E2E_SpacedCtrlC_DoesNotKill(t *testing.T) {
@@ -1202,7 +1281,7 @@ func TestProxy_E2E_SpacedCtrlC_DoesNotKill(t *testing.T) {
 	<-done
 }
 
-// 33. Safety ON: AFK refuses to blind-nudge when the screen shows a
+//  33. Safety ON: AFK refuses to blind-nudge when the screen shows a
 //     deletion-class command.
 func TestProxy_E2E_SafetyBlocksAfkNudgeWithDanger(t *testing.T) {
 	log, err := logger.New(t.TempDir() + "/test.log")
@@ -1251,7 +1330,7 @@ func TestProxy_E2E_SafetyBlocksAfkNudgeWithDanger(t *testing.T) {
 
 // ── Additional hardening tests ──────────────────────────────────────────────
 
-// 37. cfg.Kill == nil must not crash: users of the proxy package can
+//  37. cfg.Kill == nil must not crash: users of the proxy package can
 //     legitimately omit Kill (e.g. in tests that don't need the force-kill
 //     path), and hitting Ctrl+Y q or 3x Ctrl-C should degrade to a no-op.
 func TestProxy_E2E_NilKillCallback_NoPanic(t *testing.T) {
@@ -1299,7 +1378,7 @@ func TestProxy_E2E_NilKillCallback_NoPanic(t *testing.T) {
 	<-done
 }
 
-// 38. Safety must block even the "memory-seen" fast path. A prompt hash
+//  38. Safety must block even the "memory-seen" fast path. A prompt hash
 //     that's already in memory (would normally approve immediately) must
 //     still be blocked if the current screen carries a dangerous command.
 //     Prevents a replay attack: attacker plants an innocuous prompt once,

@@ -25,9 +25,9 @@ const (
 
 // Config holds all dependencies for the Proxy.
 type Config struct {
-	PTY       io.ReadWriter  // child PTY (go-pty Pty)
-	Stdin     io.Reader      // defaults to os.Stdin if nil
-	Stdout    io.Writer      // defaults to os.Stdout if nil
+	PTY       io.ReadWriter // child PTY (go-pty Pty)
+	Stdin     io.Reader     // defaults to os.Stdin if nil
+	Stdout    io.Writer     // defaults to os.Stdout if nil
 	RuleChain detector.RuleChain
 	Memory    *memory.Memory
 	StatusBar *statusbar.StatusBar
@@ -35,7 +35,7 @@ type Config struct {
 	Term      *term.Term
 	Screen    *screen.Screen
 	AgentKind agent.Kind
-	Delay     int  // seconds
+	Delay     int // seconds
 	Enabled   bool
 	DryRun    bool
 
@@ -60,13 +60,27 @@ type Config struct {
 	// Typically set to func() { cmd.Process.Kill() }.
 	Kill func()
 
-	// Dump is the Ctrl+Y d callback. It collects a diagnostic snapshot
-	// of yoyo's state (version, runtime flags, agent info, current
-	// screen, config, log tail, filtered env) and writes it to a
+	// Dump is the Ctrl+Y d callback. It receives the proxy's current
+	// runtime state, collects a diagnostic snapshot, and writes it to a
 	// timestamped file under ~/.yoyo/dumps/. Returns the absolute path
 	// of the written file, or an error. The status bar briefly shows
 	// "dumped: <path>" so the user knows where to find it.
-	Dump func() (path string, err error)
+	Dump func(RuntimeState) (path string, err error)
+}
+
+// RuntimeState is the mutable proxy state captured at the exact moment a
+// diagnostic dump is requested.
+type RuntimeState struct {
+	AgentKind     agent.Kind
+	Enabled       bool
+	Delay         int
+	DryRun        bool
+	AfkEnabled    bool
+	AfkIdle       time.Duration
+	FuzzyEnabled  bool
+	FuzzyStable   time.Duration
+	SafetyEnabled bool
+	ApprovalCount int64
 }
 
 // Proxy is the coordinator that routes bytes between stdin, child PTY, and stdout.
@@ -171,7 +185,7 @@ func (p *Proxy) Run() error {
 	var approvalTimer *time.Timer
 	var timerCh <-chan time.Time
 	var lastResult *detector.MatchResult
-	var approvedHash string    // suppress re-approvals while prompt is still on screen
+	var approvedHash string        // suppress re-approvals while prompt is still on screen
 	var approvalDeadline time.Time // for countdown display
 
 	var prefixTimer *time.Timer
@@ -236,6 +250,21 @@ func (p *Proxy) Run() error {
 
 	// Rebuild rule chain when agent kind is resolved
 	chain := cfg.RuleChain
+
+	currentState := func() RuntimeState {
+		return RuntimeState{
+			AgentKind:     agentKind,
+			Enabled:       enabled,
+			Delay:         delaySecs,
+			DryRun:        dryRun,
+			AfkEnabled:    afkEnabled,
+			AfkIdle:       cfg.AfkIdle,
+			FuzzyEnabled:  fuzzyEnabled,
+			FuzzyStable:   cfg.FuzzyStable,
+			SafetyEnabled: cfg.SafetyEnabled,
+			ApprovalCount: p.ApprovalCount(),
+		}
+	}
 
 	// Helper to send approval (respects dry-run mode).
 	//
@@ -367,7 +396,7 @@ func (p *Proxy) Run() error {
 					// path in the status bar. Useful for capturing "why did
 					// yoyo do/not do X here?" situations for follow-up.
 					if cfg.Dump != nil {
-						if path, err := cfg.Dump(); err != nil {
+						if path, err := cfg.Dump(currentState()); err != nil {
 							cfg.StatusBar.SetRule("dump failed: " + err.Error())
 							if cfg.Log != nil {
 								cfg.Log.Errorf("dump: write failed: %v", err)

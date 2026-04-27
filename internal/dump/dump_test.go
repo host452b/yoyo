@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/host452b/yoyo/internal/agent"
+	"github.com/host452b/yoyo/internal/detector"
 	"github.com/host452b/yoyo/internal/dump"
 )
 
@@ -176,5 +177,60 @@ func TestWrite_CreatesDirectory(t *testing.T) {
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("dump file not found: %v", err)
+	}
+}
+
+func TestWrite_IncludesDetectorDiagnosticsAndLineNumberedScreen(t *testing.T) {
+	never, err := detector.NewRegexpDetector("never", `not-present`, "\r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	custom, err := detector.NewRegexpDetector("custom-confirm", `Continue\? \[y/N\]`, "y\r")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	screen := "Continue? [y/N]\n$ rm -rf /\n"
+	diagnostics := dump.NewDiagnostics(screen, []dump.DetectorProbe{
+		{Label: "custom: never", Detector: never},
+		{Label: "custom: confirm", Detector: custom},
+	})
+
+	dir := filepath.Join(t.TempDir(), "dumps")
+	path, err := dump.Write(dump.Snapshot{
+		Version:     "v2.3.0-test",
+		AgentKind:   agent.KindCodex,
+		PTYCols:     100,
+		PTYRows:     30,
+		ScreenText:  screen,
+		Diagnostics: &diagnostics,
+	}, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(data)
+
+	for _, must := range []string{
+		"## Detector diagnostics",
+		"- custom: never: no match",
+		"- custom: confirm: matched",
+		"  - rule: custom-confirm",
+		"  - response: y + enter",
+		"  - hash:",
+		"- fuzzy: matched=true",
+		"- safety: blocked=true",
+		"  - snippet: `rm -rf /`",
+		"## Repro screen (line-numbered)",
+		"   1 | Continue? [y/N]",
+		"   2 | $ rm -rf /",
+	} {
+		if !strings.Contains(body, must) {
+			t.Errorf("dump missing diagnostic content %q\n---\n%s", must, body)
+		}
 	}
 }

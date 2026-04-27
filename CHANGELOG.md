@@ -4,6 +4,23 @@ All notable changes to yoyo are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] — 2026-04-27
+
+### Added
+
+- **Maintainer-ready detector diagnostics in `Ctrl+Y d` dumps.** Diagnostic
+  dumps now include every active detector/rule's match result, fuzzy fallback
+  result, safety-guard result, matched response shape, prompt hash, and a
+  line-numbered repro copy of the exact vt10x-rendered screen yoyo evaluated.
+  This turns "Codex/Claude/Cursor did not auto-approve here" reports into
+  copy-pasteable regression-test cases for maintainers.
+
+### Fixed
+
+- Runtime flags in dumps now reflect the current proxy state at the moment
+  `Ctrl+Y d` is pressed, including runtime toggles such as `Ctrl+Y 0`,
+  `Ctrl+Y a`, `Ctrl+Y f`, and delay changes via `Ctrl+Y 1`–`5`.
+
 ## [2.3.0] — 2026-04-23
 
 ### Added
