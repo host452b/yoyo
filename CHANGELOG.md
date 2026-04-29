@@ -4,6 +4,23 @@ All notable changes to yoyo are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.1] — 2026-04-29
+
+### Fixed
+
+- **Approval timer no longer resets on hash drift.** When background output
+  (progress tables, stacked dialogs) bleeds into the dialog body via vt10x
+  rendering, the hash changes every screen refresh. Previously this caused the
+  3-second countdown to restart indefinitely, so yoyo never auto-approved.
+  The timer now starts only on the first appearance of a prompt and ignores
+  subsequent hash changes from rendering noise.
+
+- **"Don't ask again" option is now selected when available.** Claude Code's
+  3-option dialog (`1. Yes / 2. Yes, and don't ask again for: <pattern> / 3. No`)
+  is now answered with option 2 (↓+Enter), permanently adding the command
+  pattern to Claude's allowlist and eliminating repeated prompts for the same
+  command in future sessions.
+
 ## [2.4.0] — 2026-04-27
 
 ### Added
