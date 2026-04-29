@@ -36,7 +36,7 @@ func TestClaude_3OptionPrompt_Bash(t *testing.T) {
 	if r == nil {
 		t.Fatalf("expected Claude detector to match 3-option UI; got nil.\n\nScreen text was:\n%s", text)
 	}
-	if r.Response != "\r" {
-		t.Errorf("expected Response=\"\\r\", got %q", r.Response)
+	if r.Response != "\x1b[B\r" {
+		t.Errorf("expected Response=\"\\x1b[B\\r\" (↓+Enter to select don't-ask-again), got %q", r.Response)
 	}
 }

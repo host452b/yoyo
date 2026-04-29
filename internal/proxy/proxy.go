@@ -489,6 +489,7 @@ func (p *Proxy) Run() error {
 				result := chain.Detect(text)
 				if result == nil {
 					approvedHash = "" // prompt gone, allow future re-approval
+					lastResult = nil  // reset so the next fresh appearance starts a new countdown
 				} else if result.Hash == approvedHash {
 					// Already approved this prompt instance; skip until it disappears
 				} else if cfg.Memory.Seen(result.Hash) {
@@ -504,15 +505,20 @@ func (p *Proxy) Run() error {
 						cfg.Memory.Record(result.Hash)
 						approvedHash = result.Hash
 						sendApproval(result, "immediate-approval")
-					} else if lastResult == nil || lastResult.Hash != result.Hash {
-						// New or changed prompt: (re)start timer
-						if approvalTimer != nil {
-							approvalTimer.Stop()
-						}
+					} else if lastResult == nil {
+						// Fresh prompt appearance: start the approval countdown.
 						lastResult = result
 						approvalTimer = time.NewTimer(time.Duration(delaySecs) * time.Second)
 						timerCh = approvalTimer.C
 						approvalDeadline = time.Now().Add(time.Duration(delaySecs) * time.Second)
+					} else if lastResult.Hash != result.Hash {
+						// Hash drifted (rendering noise from background output or
+						// overlapping dialogs) — update the stored result so the
+						// correct response fires, but do NOT restart the timer.
+						// Restarting on every hash change caused the countdown to
+						// reset indefinitely when a progress table bled into the
+						// dialog body on each screen refresh.
+						lastResult = result
 					}
 				}
 			}

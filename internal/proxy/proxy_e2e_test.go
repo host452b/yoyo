@@ -1207,6 +1207,36 @@ func TestProxy_E2E_CtrlYD_DumpErrorIsNonFatal(t *testing.T) {
 	<-done
 }
 
+// 39. Hash drift from rendering noise must NOT restart the approval timer.
+// When a progress-table or overlapping dialog bleeds into the approval dialog
+// body on each screen refresh, the hash changes every frame. Before the fix,
+// this caused the countdown to reset indefinitely. After the fix, the timer
+// fires at the original deadline regardless of subsequent hash changes.
+func TestProxy_E2E_HashDriftDoesNotRestartTimer(t *testing.T) {
+	// Two prompts: same dialog type, different body content → different hashes.
+	// The second simulates rendering noise (a progress counter bled into the body).
+	const driftedPrompt = "─────────────────────────────────────────────\r\n" +
+		" Read /etc/hosts (progress 42/240)\r\n\r\n 1. Yes\r\n 2. No\r\n\r\n Esc to cancel\r\n"
+
+	pr, _, pty, stdin := makeProxy(t, agent.KindClaude, 1, true, nil)
+	defer stdin.close()
+	done := runProxy(pr)
+
+	// t=0: first prompt → 1s timer starts
+	pty.send(claudePrompt)
+	// t=600ms: drifted re-render of the same dialog arrives (hash changed)
+	time.Sleep(600 * time.Millisecond)
+	pty.send(driftedPrompt)
+
+	// With the fix, the timer fires ~1s from t=0, so approval arrives by ~1.2s.
+	// Without the fix, the timer would restart at t=600ms and fire at t=1.6s —
+	// the 1.2s window below would time out.
+	waitWritten(t, pty, "\r", 800*time.Millisecond)
+
+	pty.close()
+	<-done
+}
+
 // 34. Ctrl+Y q triggers the force-kill callback.
 func TestProxy_E2E_CtrlYQ_ForceKill(t *testing.T) {
 	var kills int64

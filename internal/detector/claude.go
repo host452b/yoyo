@@ -54,11 +54,27 @@ func (c Claude) Detect(screenText string) *MatchResult {
 		return nil
 	}
 
+	// When the dialog offers "don't ask again", navigate to option 2 (↓↵) so
+	// the command pattern is added to Claude's allowlist permanently, avoiding
+	// repeated prompts for the same command in future sessions.
+	response := "\r"
+	if containsDontAskAgain(body) {
+		response = "\x1b[B\r"
+	}
+
 	return &MatchResult{
 		RuleName: "Claude",
-		Response: "\r",
+		Response: response,
 		Hash:     hashBody(body),
 	}
+}
+
+// containsDontAskAgain reports whether the dialog body contains a
+// "don’t ask again for: <pattern>" option (Claude Code 3-option UI).
+// Matches by the unique substring "ask again for" to sidestep apostrophe
+// encoding variants (ASCII ‘ vs Unicode U+2019).
+func containsDontAskAgain(body string) bool {
+	return strings.Contains(strings.ToLower(body), "ask again for")
 }
 
 // findClaudeBottom finds the bottom boundary index.

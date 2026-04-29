@@ -195,3 +195,41 @@ func TestClaude_DefaultResponse(t *testing.T) {
 		t.Errorf("Response = %q, want %q", r.Response, "\r")
 	}
 }
+
+func TestClaude_DontAskAgainSelectsOption2(t *testing.T) {
+	d := detector.Claude{}
+	p := "─────────────────────────────────────────────\n" +
+		" Bash command\n\n" +
+		"   python3 -c \"import json\"\n\n" +
+		" Do you want to proceed?\n" +
+		"   1. Yes\n" +
+		"   2. Yes, and don't ask again for: python3 *\n" +
+		"   3. No\n\n" +
+		" Esc to cancel · Tab to amend\n"
+	r := d.Detect(p)
+	if r == nil {
+		t.Fatal("expected detection")
+	}
+	if r.Response != "\x1b[B\r" {
+		t.Errorf("Response = %q, want \"\\x1b[B\\r\" (↓+Enter)", r.Response)
+	}
+}
+
+func TestClaude_2OptionNoAskAgainKeepsEnter(t *testing.T) {
+	d := detector.Claude{}
+	p := "─────────────────────────────────────────────\n" +
+		" Bash command\n\n" +
+		"   ls -la\n\n" +
+		" Contains simple_expansion\n\n" +
+		" Do you want to proceed?\n" +
+		"   1. Yes\n" +
+		"   2. No\n\n" +
+		" Esc to cancel · Tab to amend\n"
+	r := d.Detect(p)
+	if r == nil {
+		t.Fatal("expected detection")
+	}
+	if r.Response != "\r" {
+		t.Errorf("Response = %q, want \"\\r\"", r.Response)
+	}
+}
