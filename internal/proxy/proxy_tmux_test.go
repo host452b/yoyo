@@ -185,7 +185,9 @@ func TestTmux_PaneSize_HonorsRequest(t *testing.T) {
 func TestTmux_ClaudeDetector_2Option(t *testing.T) {
 	h := newTmuxH(t, 120, 40)
 	h.catFile(tmuxDlg2Opt)
-	time.Sleep(300 * time.Millisecond)
+	if !h.waitFor("Read /etc/hosts", 3*time.Second) {
+		t.Fatal("2-option dialog never rendered in tmux pane")
+	}
 
 	pane := h.capture()
 	t.Logf("pane capture:\n%s", pane)
@@ -205,7 +207,9 @@ func TestTmux_ClaudeDetector_2Option(t *testing.T) {
 func TestTmux_ClaudeDetector_3Option(t *testing.T) {
 	h := newTmuxH(t, 120, 40)
 	h.catFile(tmuxDlg3Opt)
-	time.Sleep(300 * time.Millisecond)
+	if !h.waitFor("ask again for", 3*time.Second) {
+		t.Fatal("3-option dialog never rendered in tmux pane")
+	}
 
 	pane := h.capture()
 	t.Logf("pane capture:\n%s", pane)
@@ -226,7 +230,9 @@ func TestTmux_ClaudeDetector_3Option(t *testing.T) {
 func TestTmux_ClaudeDetector_NarrowPane(t *testing.T) {
 	h := newTmuxH(t, 60, 24)
 	h.catFile(tmuxDlgNarrow)
-	time.Sleep(300 * time.Millisecond)
+	if !h.waitFor("Write /tmp/out.txt", 3*time.Second) {
+		t.Fatal("narrow-pane dialog never rendered in tmux pane")
+	}
 
 	pane := h.capture()
 	cols, rows := h.paneSize()
@@ -245,12 +251,17 @@ func TestTmux_ClaudeDetector_NarrowPane(t *testing.T) {
 func TestTmux_ClaudeDetector_MultipleDialogs(t *testing.T) {
 	h := newTmuxH(t, 120, 50) // tall pane to fit both dialogs
 
-	// First: a Read dialog.
+	// First: a Read dialog. Wait for it to actually render before continuing —
+	// fixed sleeps race against tmux/shell rendering and capture partial output.
 	h.catFile(tmuxDlg2Opt)
-	time.Sleep(150 * time.Millisecond)
+	if !h.waitFor("Read /etc/hosts", 3*time.Second) {
+		t.Fatal("first (Read) dialog never rendered in tmux pane")
+	}
 	// Second (newer): a Bash dialog that has "don't ask again".
 	h.catFile(tmuxDlg3Opt)
-	time.Sleep(300 * time.Millisecond)
+	if !h.waitFor("ask again for", 3*time.Second) {
+		t.Fatal("second (Bash, don't-ask-again) dialog never rendered in tmux pane")
+	}
 
 	pane := h.capture()
 	t.Logf("pane with two dialogs:\n%s", pane)

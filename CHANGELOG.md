@@ -4,6 +4,37 @@ All notable changes to yoyo are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.2] — 2026-06-04
+
+### Fixed
+
+- **tmux: prompt detection now survives `TERM_PROGRAM`.** tmux injects
+  `TERM_PROGRAM=tmux` and `TERM_PROGRAM_VERSION` into every pane child
+  alongside `TERM`/`TMUX`/`TMUX_PANE`. yoyo already overrode `TERM` and
+  stripped the `TMUX*` vars, but left `TERM_PROGRAM=tmux` in the child
+  environment — a contradictory signal (TERM says xterm, TERM_PROGRAM says
+  tmux) that let the wrapped agent take a tmux rendering path and emit escape
+  sequences the vt10x emulator mis-parsed, breaking the countdown and
+  auto-approve when yoyo ran inside tmux. `buildChildEnv` now also strips
+  `TERM_PROGRAM` and `TERM_PROGRAM_VERSION`, so the child sees a clean xterm.
+
+### Docs
+
+- Corrected the build requirement (Go 1.21+ → 1.22+, matching `go.mod`),
+  refreshed the `yoyo -v` version example, reworded the status-bar hide
+  threshold (it tracks the dynamic label width, not a fixed 24 columns), and
+  fixed `yoyo` → `yoyo-cli` PyPI-name drift in the release script and Python
+  README.
+
+### Internal
+
+- De-flaked the `TestTmux_ClaudeDetector_*` integration tests. They captured
+  the tmux pane after a fixed `time.Sleep`, racing against tmux/shell
+  rendering and intermittently reading partial or empty output. They now wait
+  for the dialog's content to appear (via the existing `waitFor` helper).
+  Added a deterministic, tmux-free regression test for the stacked-dialog
+  case (older 2-option above a newer 3-option "don't ask again" prompt).
+
 ## [2.4.1] — 2026-04-29
 
 ### Fixed

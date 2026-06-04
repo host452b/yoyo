@@ -115,6 +115,36 @@ func TestClaude_PicksLastSeparatorWhenMultiple(t *testing.T) {
 	}
 }
 
+// When two dialogs are stacked on screen (e.g. an older Read prompt above a
+// newer Bash prompt that offers "don't ask again"), the detector must isolate
+// the NEWEST dialog and answer it — here with ↓+Enter for the don't-ask-again
+// option. Regression for the stacked-dialog case exercised by the tmux
+// integration test.
+func TestClaude_StackedDialogsPicksNewestDontAskAgain(t *testing.T) {
+	d := detector.Claude{}
+	p := "cat /tmp/x/002.txt\n" +
+		"─────────────────────────────────────────────\n" +
+		" Read /etc/hosts\n\n" +
+		"   1. Yes\n   2. No\n\n" +
+		" Esc to cancel · Tab to amend\n" +
+		"cat /tmp/x/003.txt\n" +
+		"─────────────────────────────────────────────\n" +
+		" Bash command\n\n" +
+		"   pip3 show python-dotenv 2>/dev/null\n\n" +
+		" Do you want to proceed?\n" +
+		" ❯ 1. Yes\n" +
+		"   2. Yes, and don't ask again for: pip3 show *\n" +
+		"   3. No\n\n" +
+		" Esc to cancel · Tab to amend\n"
+	r := d.Detect(p)
+	if r == nil {
+		t.Fatal("expected detection of stacked dialogs")
+	}
+	if r.Response != "\x1b[B\r" {
+		t.Errorf("Response = %q; want \"\\x1b[B\\r\" (newest dialog offers don't-ask-again)", r.Response)
+	}
+}
+
 func TestClaude_StableAcrossRedraws(t *testing.T) {
 	d := detector.Claude{}
 	p := claudePrompt("Read file", []string{"Yes", "No"})
