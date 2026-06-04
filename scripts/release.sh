@@ -188,13 +188,13 @@ if command -v python3 >/dev/null 2>&1 && [[ -f python/build_wheels.py ]]; then
     fi
     echo
     echo "uploading wheels to PyPI ..."
-    twine upload python/dist/yoyo-${TAG#v}-*.whl
+    twine upload python/dist/yoyo_cli-${TAG#v}-*.whl
     echo "✓ uploaded to PyPI"
-    echo "  https://pypi.org/project/yoyo/${TAG#v}/"
+    echo "  https://pypi.org/project/yoyo-cli/${TAG#v}/"
   else
     echo
     echo "Wheels built but NOT uploaded. To publish:"
     echo "  UPLOAD_PYPI=1 ./scripts/release.sh $TAG"
-    echo "  # or: twine upload python/dist/yoyo-${TAG#v}-*.whl"
+    echo "  # or: twine upload python/dist/yoyo_cli-${TAG#v}-*.whl"
   fi
 fi

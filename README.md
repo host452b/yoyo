@@ -66,13 +66,13 @@ curl -L https://github.com/host452b/yoyo/releases/latest/download/yoyo-darwin-am
 chmod +x yoyo && sudo mv yoyo /usr/local/bin/
 ```
 
-### go install (requires Go 1.21+)
+### go install (requires Go 1.22+)
 
 ```bash
 go install github.com/host452b/yoyo/cmd/yoyo@latest
 ```
 
-> Run `go version` to check. If you have Go < 1.21, use the one-line install above.
+> Run `go version` to check. If you have Go < 1.22, use the one-line install above.
 
 ### Build from source
 
@@ -88,7 +88,7 @@ sudo mv yoyo /usr/local/bin/
 ### Verify
 
 ```bash
-yoyo -v      # prints the installed version, e.g. "yoyo v2.2.4"
+yoyo -v      # prints the installed version, e.g. "yoyo v2.4.1"
 yoyo -h      # full usage
 ```
 
@@ -443,7 +443,7 @@ Run `reset` to restore terminal state. This can happen if yoyo is killed with `S
 **Status bar flickers or doesn't appear**
 
 - Ensure your terminal supports ANSI escape sequences (most do).
-- If the terminal is too narrow (< 24 columns), the status bar is hidden automatically.
+- If the terminal is too narrow to fit the status label, the status bar is hidden automatically.
 - Resize events are tracked; the status bar repositions when the terminal is resized.
 
 ---
@@ -456,7 +456,7 @@ Run `reset` to restore terminal state. This can happen if yoyo is killed with `S
 | macOS | Fully supported |
 | Windows | Builds and runs; PTY resize is a no-op |
 
-Requirements: Go 1.21+ to build from source.
+Requirements: Go 1.22+ to build from source.
 
 ---
 

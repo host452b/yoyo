@@ -57,13 +57,13 @@ curl -L https://github.com/host452b/yoyo/releases/latest/download/yoyo-darwin-am
 chmod +x yoyo && sudo mv yoyo /usr/local/bin/
 ```
 
-### go install（需要 Go 1.21+）
+### go install（需要 Go 1.22+）
 
 ```bash
 go install github.com/host452b/yoyo/cmd/yoyo@latest
 ```
 
-> 先 `go version` 检查版本。Go < 1.21 请用上面的一行命令安装。
+> 先 `go version` 检查版本。Go < 1.22 请用上面的一行命令安装。
 
 ### 源码构建
 
@@ -79,7 +79,7 @@ sudo mv yoyo /usr/local/bin/
 ### 验证安装
 
 ```bash
-yoyo -v      # 打印已装版本，例如 "yoyo v2.2.4"
+yoyo -v      # 打印已装版本，例如 "yoyo v2.4.1"
 yoyo -h      # 完整用法
 ```
 
@@ -381,7 +381,7 @@ tail -f ~/.yoyo/yoyo.log
 **状态条闪烁或根本不显示**
 
 - 确认终端支持 ANSI 转义（绝大多数支持）。
-- 终端太窄（< 24 列）时状态条会自动隐藏。
+- 终端太窄、放不下状态标签时，状态条会自动隐藏。
 - 有 SIGWINCH 监听，终端缩放时状态条会重定位。
 
 ---
@@ -394,7 +394,7 @@ tail -f ~/.yoyo/yoyo.log
 | macOS | 完全支持 |
 | Windows | 能编译能运行；PTY resize 是 no-op |
 
-源码构建需要 Go 1.21+。
+源码构建需要 Go 1.22+。
 
 ---
 

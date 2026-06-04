@@ -31,7 +31,7 @@ fallback, and everything else.
 ## Why a binary wheel?
 
 yoyo is written in Go. Packaging it as a Python wheel means you get the same
-one-line install for Python-centric workflows (`pip install yoyo`) as you do
+one-line install for Python-centric workflows (`pip install yoyo-cli`) as you do
 with `curl | sh` or `go install`. The wheel bundles only the Go binary — no
 Python code, no runtime Python dependency.
 
