@@ -93,6 +93,31 @@ func TestBuildChildEnv_StripsTmuxVars(t *testing.T) {
 	}
 }
 
+// tmux's environ_for_session() (environ.c) injects TERM_PROGRAM=tmux and
+// TERM_PROGRAM_VERSION alongside TERM/TMUX. Overriding TERM alone leaves the
+// child with contradictory signals (TERM=xterm but TERM_PROGRAM=tmux), so a
+// TUI that branches on TERM_PROGRAM can still take its tmux rendering path and
+// emit sequences the vt10x emulator mis-parses. Both must be stripped so the
+// child looks like a plain xterm.
+func TestBuildChildEnv_StripsTermProgramVars(t *testing.T) {
+	env := buildChildEnv([]string{
+		"HOME=/home/user",
+		"TERM=screen-256color",
+		"TERM_PROGRAM=tmux",
+		"TERM_PROGRAM_VERSION=3.4",
+		"PATH=/usr/bin",
+	})
+
+	for _, e := range env {
+		if strings.HasPrefix(e, "TERM_PROGRAM=") {
+			t.Errorf("child env must not contain TERM_PROGRAM: %s", e)
+		}
+		if strings.HasPrefix(e, "TERM_PROGRAM_VERSION=") {
+			t.Errorf("child env must not contain TERM_PROGRAM_VERSION: %s", e)
+		}
+	}
+}
+
 func TestBuildChildEnv_DoesNotDuplicateTERM(t *testing.T) {
 	env := buildChildEnv([]string{"TERM=tmux-256color", "PATH=/usr/bin"})
 
