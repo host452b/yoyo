@@ -243,6 +243,22 @@ The prefix key is **Ctrl+Y**. Press Ctrl+Y, then:
 OS-level `kill(9)` on the child, bypassing the PTY byte stream. yoyo itself
 exits cleanly afterward.
 
+### Terminal compatibility (Kitty keyboard protocol)
+
+The prefix key works on both legacy and modern terminals. Traditional terminals
+(Termius, Terminal.app, older xterm) encode `Ctrl+Y` as the single control byte
+`0x19`. Terminals that implement the
+[Kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/)
+(Ghostty, kitty, WezTerm, foot, …) instead encode it as an escape sequence
+(`\x1b[121;5u`) once the wrapped agent enables progressive enhancement. yoyo
+normalizes both encodings to the same prefix internally, so `Ctrl+Y` + command
+behaves identically regardless of terminal.
+
+> **Known limitation:** the bare *triple `Ctrl-C` within 1 s* force-kill
+> shortcut keys off the raw `0x03` byte and does **not** fire under the Kitty
+> protocol (the terminal re-encodes `Ctrl-C` as an escape sequence). Use
+> `Ctrl+Y  q` instead — it works on every terminal.
+
 ### Diagnostic dumps
 
 Press `Ctrl+Y  d` to freeze everything yoyo knew about its state at that

@@ -4,6 +4,46 @@ All notable changes to yoyo are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] — 2026-06-23
+
+### Added
+
+- **Kitty keyboard protocol support for the `Ctrl+Y` prefix.** Modern terminals
+  that implement the
+  [Kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/)
+  (Ghostty, kitty, WezTerm, foot, …) stop sending the legacy `0x19` control byte
+  for `Ctrl+Y` once the wrapped agent enables progressive enhancement — they send
+  the escape sequence `\x1b[121;5u` instead. yoyo's prefix state machine only
+  understood the legacy byte, so the prefix (and the `0`/`1`–`5`/`a`/`f`/`q`/`d`
+  commands behind it) was silently swallowed on those terminals while continuing
+  to work in legacy terminals like Termius. Inbound keystrokes are now normalized
+  up front: a Kitty-encoded `Ctrl+Y` press/repeat is rewritten to `0x19` and a
+  release event is dropped, so the rest of the input handler is unchanged and the
+  prefix behaves identically on legacy and Kitty-capable terminals. Other
+  Kitty-encoded keys pass through to the agent untouched.
+
+### Fixed
+
+- **`Ctrl+Y` prefix no longer dead on Ghostty / kitty / WezTerm.** Direct
+  consequence of the above — the "press Ctrl+Y then 1/2/3 to set the delay"
+  control now works on Kitty-protocol terminals.
+
+### Known limitations
+
+- The bare **triple-`Ctrl-C` within 1 s** force-kill shortcut keys off the raw
+  `0x03` byte and does not fire under the Kitty protocol (the terminal re-encodes
+  `Ctrl-C` as an escape sequence). `Ctrl+Y  q` is unaffected and works on every
+  terminal. A Kitty-aware control-key decode for `Ctrl-C` is left for a follow-up.
+
+### Internal
+
+- New pure-function unit tests for the Kitty prefix normalizer (legacy byte,
+  press/repeat/release events, shifted-alternate codepoint, combined and split
+  chunks, non-prefix keys, malformed/incomplete sequences) plus six end-to-end
+  tests driving the full `Run()` loop with Kitty-encoded input (toggle, set
+  delay, split-chunk prefix, `Ctrl+Y q` force-kill, non-prefix passthrough,
+  release-event ignore).
+
 ## [2.4.2] — 2026-06-04
 
 ### Fixed

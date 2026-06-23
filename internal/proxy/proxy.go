@@ -311,6 +311,16 @@ func (p *Proxy) Run() error {
 				closeDone()
 				return nil
 			}
+			// Kitty keyboard protocol: terminals such as Ghostty encode
+			// Ctrl+Y as "\x1b[121;5u" (not the legacy 0x19 byte) once the
+			// child enables progressive enhancement. Normalize the prefix
+			// back to 0x19 up front so the prefix state machine below works
+			// the same on legacy and Kitty-capable terminals.
+			data = normalizeKittyPrefix(data)
+			if len(data) == 0 {
+				continue
+			}
+
 			// Force-kill escape hatch: three Ctrl-C (0x03) presses within
 			// 1 s trigger cfg.Kill(). Covers the case where the agent's
 			// TUI has wedged its input handling and normal Ctrl-C isn't
