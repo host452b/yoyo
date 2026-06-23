@@ -462,6 +462,23 @@ Run `reset` to restore terminal state. This can happen if yoyo is killed with `S
 - If the terminal is too narrow to fit the status label, the status bar is hidden automatically.
 - Resize events are tracked; the status bar repositions when the terminal is resized.
 
+**`Ctrl+Y` prefix does nothing after upgrading yoyo**
+
+yoyo is a long-lived process: upgrading the binary does **not** affect sessions
+that are already running — they keep the old binary in memory. After
+`go install` / `pip install -U`, **restart the session** (exit the wrapped agent
+and relaunch `yoyo …`) before concluding a fix didn't work.
+
+```bash
+# confirm the running session was started AFTER your last upgrade
+ps -eo pid,lstart,command | grep '[y]oyo'
+```
+
+If `Ctrl+Y` still does nothing in a *freshly started* session on a
+Kitty-protocol terminal (Ghostty, kitty, WezTerm), the escape encoding
+(`\x1b[121;5u`) has been normalized internally since v2.5.0 — capture the raw
+bytes and open an issue.
+
 ---
 
 ## Platform Support

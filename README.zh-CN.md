@@ -384,6 +384,21 @@ tail -f ~/.yoyo/yoyo.log
 - 终端太窄、放不下状态标签时，状态条会自动隐藏。
 - 有 SIGWINCH 监听，终端缩放时状态条会重定位。
 
+**升级 yoyo 之后 `Ctrl+Y` 前缀键没反应**
+
+yoyo 是常驻进程：升级二进制**不会**影响已经在跑的会话——它们仍然用内存里的旧
+二进制。`go install` / `pip install -U` 之后，要先**重启会话**（退出被包裹的
+agent 再重新 `yoyo …`），再下结论"修复没生效"。
+
+```bash
+# 确认正在跑的会话是上次升级之后才启动的
+ps -eo pid,lstart,command | grep '[y]oyo'
+```
+
+如果在**重新启动**的会话里、在 Kitty 协议终端（Ghostty、kitty、WezTerm）上
+`Ctrl+Y` 仍然没反应：该转义编码（`\x1b[121;5u`）自 v2.5.0 起已在内部归一化，
+请抓取原始字节并提 issue。
+
 ---
 
 ## 平台支持

@@ -4,6 +4,19 @@ All notable changes to yoyo are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.1] — 2026-06-23
+
+### Docs
+
+- **Troubleshooting: `Ctrl+Y` prefix does nothing after upgrading.** Documented
+  that yoyo is a long-lived process — upgrading the binary does not affect
+  already-running sessions, which keep the old binary in memory. A post-2.5.0
+  "Kitty fix didn't work" report turned out to be a stale session: the fix was
+  correct and verified in the installed binary, but every live `yoyo` process
+  predated it. Added an EN + 中文 troubleshooting entry (restart the session,
+  and a `ps` one-liner to confirm start time) so this is self-serviceable. No
+  code change.
+
 ## [2.5.0] — 2026-06-23
 
 ### Added
