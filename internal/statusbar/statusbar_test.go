@@ -107,6 +107,26 @@ func TestStatusBar_Countdown(t *testing.T) {
 	}
 }
 
+func TestStatusBar_CountdownUsesYellowBackgroundAndBlink(t *testing.T) {
+	sb := statusbar.New(24, 80, true, 5)
+	sb.SetCountdown(3)
+	out := string(sb.WrapFrame([]byte("x")))
+	if !strings.Contains(out, "\x1b[43m") {
+		t.Errorf("countdown should use yellow background, got %q", out)
+	}
+	if !strings.Contains(out, "\x1b[5m") {
+		t.Errorf("countdown should blink, got %q", out)
+	}
+}
+
+func TestStatusBar_IdleDoesNotBlink(t *testing.T) {
+	sb := statusbar.New(24, 80, true, 5)
+	out := string(sb.WrapFrame([]byte("x")))
+	if strings.Contains(out, "\x1b[5m") {
+		t.Errorf("idle label should not blink, got %q", out)
+	}
+}
+
 func TestStatusBar_CountdownClear(t *testing.T) {
 	sb := statusbar.New(24, 80, true, 5)
 	sb.SetCountdown(2)

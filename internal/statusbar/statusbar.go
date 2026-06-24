@@ -13,6 +13,9 @@ const (
 	fgGreen       = "\x1b[32m"
 	fgRed         = "\x1b[31m"
 	fgYellow      = "\x1b[33m"
+	fgBlack       = "\x1b[30m"
+	bgYellow      = "\x1b[43m"
+	blink         = "\x1b[5m"
 )
 
 // labelWidth is the fixed width of the status label (widest possible label).
@@ -23,21 +26,21 @@ const minLabelWidth = 22 // " [yoyo: on Xs | ...]  " minimum
 // StatusBar renders a bottom-right ANSI overlay around PTY output frames.
 // All methods are goroutine-safe (SIGWINCH resize races with event loop writes).
 type StatusBar struct {
-	mu        sync.Mutex
-	rows      uint16
-	cols      uint16
-	enabled   bool
-	delaySecs int
-	countdown int    // remaining seconds; -1 = no active countdown
-	rule      string
-	painted   bool
-	midSeq    bool
-	prefix    bool // true while waiting for Ctrl+Y command byte
-	dryRun    bool
+	mu         sync.Mutex
+	rows       uint16
+	cols       uint16
+	enabled    bool
+	delaySecs  int
+	countdown  int // remaining seconds; -1 = no active countdown
+	rule       string
+	painted    bool
+	midSeq     bool
+	prefix     bool // true while waiting for Ctrl+Y command byte
+	dryRun     bool
 	afkEnabled bool
 	afkRemain  int // seconds remaining
 	afkNudged  bool
-	buf       []byte // reusable output buffer
+	buf        []byte // reusable output buffer
 }
 
 // New creates a StatusBar. enabled=true means auto-approve is active.
@@ -168,7 +171,7 @@ func (sb *StatusBar) labelColor() string {
 		return fgYellow
 	}
 	if sb.countdown >= 0 {
-		return fgYellow // counting down — attention
+		return bgYellow + fgBlack + blink // counting down — high-visibility flash
 	}
 	return fgGreen
 }
@@ -215,8 +218,8 @@ func (sb *StatusBar) afkSuffix() string {
 }
 
 func overlayAt(row, col uint16, color, text string) []byte {
-	s := fmt.Sprintf("%s\x1b[%d;%dH%s%s%s%s",
-		cursorSave, row, col, sgrReset, color, text, cursorRestore)
+	s := fmt.Sprintf("%s\x1b[%d;%dH%s%s%s%s%s",
+		cursorSave, row, col, sgrReset, color, text, sgrReset, cursorRestore)
 	return []byte(s)
 }
 
