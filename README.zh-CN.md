@@ -79,7 +79,7 @@ sudo mv yoyo /usr/local/bin/
 ### 验证安装
 
 ```bash
-yoyo -v      # 打印已装版本，例如 "yoyo v2.4.1"
+yoyo -v      # 打印已装版本，例如 "yoyo v2.5.2"
 yoyo -h      # 完整用法
 ```
 

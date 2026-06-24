@@ -4,6 +4,27 @@ All notable changes to yoyo are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.2] — 2026-06-24
+
+### Changed
+
+- **Countdown status is more visible.** During an active approval countdown, the
+  status bar now renders with a yellow background, black text, and an ANSI blink
+  request. Idle auto-approve remains green, while dry-run and `Ctrl+Y` prefix
+  states remain yellow text.
+
+### Docs
+
+- Updated the English and Chinese README status-bar color legend, and noted
+  that some terminals ignore ANSI blink while still showing the yellow
+  countdown background.
+
+### Tests
+
+- Strengthened status-bar coverage for every countdown value (`3`/`2`/`1`/`0`),
+  black-on-yellow styling, blink, reset-before-cursor-restore, and style cleanup
+  after clearing the countdown.
+
 ## [2.5.1] — 2026-06-23
 
 ### Docs
