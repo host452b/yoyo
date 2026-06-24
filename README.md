@@ -154,7 +154,8 @@ yoyo -delay 5 codex
 ```
 
 - **Green** = auto-approve active
-- **Yellow** = countdown in progress, dry-run, or waiting for Ctrl+Y command
+- **Yellow background + blink** = countdown in progress
+- **Yellow text** = dry-run or waiting for Ctrl+Y command
 - **Red** = auto-approve off
 
 ---
@@ -459,6 +460,7 @@ Run `reset` to restore terminal state. This can happen if yoyo is killed with `S
 **Status bar flickers or doesn't appear**
 
 - Ensure your terminal supports ANSI escape sequences (most do).
+- Some terminals ignore ANSI blink; the countdown still uses a yellow background.
 - If the terminal is too narrow to fit the status label, the status bar is hidden automatically.
 - Resize events are tracked; the status bar repositions when the terminal is resized.
 

@@ -109,13 +109,18 @@ func TestStatusBar_Countdown(t *testing.T) {
 
 func TestStatusBar_CountdownUsesYellowBackgroundAndBlink(t *testing.T) {
 	sb := statusbar.New(24, 80, true, 5)
-	sb.SetCountdown(3)
-	out := string(sb.WrapFrame([]byte("x")))
-	if !strings.Contains(out, "\x1b[43m") {
-		t.Errorf("countdown should use yellow background, got %q", out)
-	}
-	if !strings.Contains(out, "\x1b[5m") {
-		t.Errorf("countdown should blink, got %q", out)
+	for _, secs := range []int{3, 2, 1, 0} {
+		sb.SetCountdown(secs)
+		out := string(sb.WrapFrame([]byte("x")))
+		if !strings.Contains(out, "\x1b[43m") {
+			t.Errorf("countdown %ds should use yellow background, got %q", secs, out)
+		}
+		if !strings.Contains(out, "\x1b[30m") {
+			t.Errorf("countdown %ds should use black text on yellow background, got %q", secs, out)
+		}
+		if !strings.Contains(out, "\x1b[5m") {
+			t.Errorf("countdown %ds should blink, got %q", secs, out)
+		}
 	}
 }
 
@@ -127,6 +132,20 @@ func TestStatusBar_IdleDoesNotBlink(t *testing.T) {
 	}
 }
 
+func TestStatusBar_CountdownStyleResetsBeforeCursorRestore(t *testing.T) {
+	sb := statusbar.New(24, 80, true, 5)
+	sb.SetCountdown(3)
+	out := string(sb.WrapFrame([]byte("x")))
+	labelEnd := strings.Index(out, "] ")
+	if labelEnd < 0 {
+		t.Fatalf("countdown label missing from output %q", out)
+	}
+	afterLabel := out[labelEnd+len("] "):]
+	if !strings.HasPrefix(afterLabel, "\x1b[0m\x1b8") {
+		t.Fatalf("countdown style should reset before cursor restore, got suffix %q", afterLabel)
+	}
+}
+
 func TestStatusBar_CountdownClear(t *testing.T) {
 	sb := statusbar.New(24, 80, true, 5)
 	sb.SetCountdown(2)
@@ -135,6 +154,12 @@ func TestStatusBar_CountdownClear(t *testing.T) {
 	// Should show configured delay (5s), not countdown
 	if !strings.Contains(out, "5s") {
 		t.Error("after ClearCountdown, should show configured delay '5s'")
+	}
+	if strings.Contains(out, "\x1b[43m") {
+		t.Errorf("after ClearCountdown, should not keep yellow background, got %q", out)
+	}
+	if strings.Contains(out, "\x1b[5m") {
+		t.Errorf("after ClearCountdown, should not keep blink, got %q", out)
 	}
 }
 
