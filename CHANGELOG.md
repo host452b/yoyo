@@ -4,6 +4,21 @@ All notable changes to yoyo are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.3] — 2026-08-26
+
+### Fixed
+
+- **Claude Code approval no longer moves a preselected allowlist option to
+  `No`.** Newer three-option Bash approval dialogs can initially select
+  `2. Yes, and don't ask again for: <pattern>`. yoyo now detects the `❯ 2.`
+  marker and sends Enter directly, while preserving Down+Enter for older
+  dialogs that initially select option 1.
+
+### Tests
+
+- Added a VT100-rendered regression case based on a diagnostic dump from a
+  general-purpose background agent approval prompt.
+
 ## [2.5.2] — 2026-06-24
 
 ### Changed
