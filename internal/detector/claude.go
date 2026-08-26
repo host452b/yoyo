@@ -41,7 +41,11 @@ func (c Claude) Detect(screenText string) *MatchResult {
 	}
 
 	var cleaned []string
+	dontAskAgainSelected := false
 	for _, line := range lines[bodyStart:bodyEnd] {
+		if strings.HasPrefix(strings.TrimSpace(line), "❯ 2.") {
+			dontAskAgainSelected = true
+		}
 		l := strings.TrimSpace(strings.ReplaceAll(line, "❯", ""))
 		l = strings.TrimSpace(l)
 		if l != "" {
@@ -54,11 +58,11 @@ func (c Claude) Detect(screenText string) *MatchResult {
 		return nil
 	}
 
-	// When the dialog offers "don't ask again", navigate to option 2 (↓↵) so
-	// the command pattern is added to Claude's allowlist permanently, avoiding
-	// repeated prompts for the same command in future sessions.
+	// Prefer the "don't ask again" option so the command pattern is added to
+	// Claude's allowlist. Older dialogs start on option 1 and need ↓↵; newer
+	// dialogs may preselect option 2 and need only ↵.
 	response := "\r"
-	if containsDontAskAgain(body) {
+	if containsDontAskAgain(body) && !dontAskAgainSelected {
 		response = "\x1b[B\r"
 	}
 

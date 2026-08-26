@@ -9,9 +9,9 @@ import (
 
 // Regression probe for the newer 3-option Claude Code UI:
 //
-//   ❯ 1. Yes
-//     2. Yes, and don't ask again for: <pattern>
-//     3. No
+//	❯ 1. Yes
+//	  2. Yes, and don't ask again for: <pattern>
+//	  3. No
 //
 // Earlier UI had only "1. Yes / 2. No" (locked in by Claude_test.go). The
 // detector must still fire for the 3-option variant — body still contains
@@ -38,5 +38,32 @@ func TestClaude_3OptionPrompt_Bash(t *testing.T) {
 	}
 	if r.Response != "\x1b[B\r" {
 		t.Errorf("expected Response=\"\\x1b[B\\r\" (↓+Enter to select don't-ask-again), got %q", r.Response)
+	}
+}
+
+func TestClaude_3OptionPrompt_PreselectedDontAskAgain(t *testing.T) {
+	prompt := "──────────────────────────────────────────\r\n" +
+		" Bash command · from the general-purpose agent\r\n" +
+		"\r\n" +
+		"   │ cd /localhome/swqa/new_feature/TensorRT && grep -n skip tests/test_green_context.py\r\n" +
+		"   Check test skip gating and aux stream test assertions\r\n" +
+		"\r\n" +
+		" This command requires approval\r\n" +
+		"\r\n" +
+		" Do you want to proceed?\r\n" +
+		"   1. Yes\r\n" +
+		" ❯ 2. Yes, and don’t ask again for: cd *\r\n" +
+		"   3. No\r\n" +
+		"\r\n" +
+		" Esc to cancel · ctrl+e to explain\r\n"
+	scr := screen.New(258, 50)
+	scr.Feed([]byte(prompt))
+
+	r := (detector.Claude{}).Detect(scr.Text())
+	if r == nil {
+		t.Fatal("expected Claude detector to match preselected 3-option UI")
+	}
+	if r.Response != "\r" {
+		t.Errorf("expected Response=\"\\r\" for preselected don't-ask-again option, got %q", r.Response)
 	}
 }
