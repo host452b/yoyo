@@ -27,8 +27,8 @@ func TestLoad_Defaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Defaults.Delay != 3 {
-		t.Errorf("default delay = %d, want 3", cfg.Defaults.Delay)
+	if cfg.Defaults.Delay != 1 {
+		t.Errorf("default delay = %d, want 1", cfg.Defaults.Delay)
 	}
 	if !cfg.Defaults.Enabled {
 		t.Error("default enabled = false, want true")
@@ -110,8 +110,8 @@ func TestLoad_FileNotFound(t *testing.T) {
 		t.Fatal("expected no error for missing config, got:", err)
 	}
 	// Missing file returns defaults
-	if cfg.Defaults.Delay != 3 {
-		t.Errorf("delay = %d, want 3", cfg.Defaults.Delay)
+	if cfg.Defaults.Delay != 1 {
+		t.Errorf("delay = %d, want 1", cfg.Defaults.Delay)
 	}
 }
 

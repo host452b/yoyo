@@ -74,7 +74,7 @@ func TestKind_Detector_Unknown_TriesAll(t *testing.T) {
 		t.Error("Unknown kind should try Claude detector")
 	}
 	// Should detect Codex prompts
-	codexPrompt := "  Would you like to run this?\n› 1. Yes\n" +
+	codexPrompt := "  Would you like to run the following command?\n› 1. Yes, proceed\n  2. No\n" +
 		"  Press enter to confirm or esc to cancel\n"
 	if d.Detect(codexPrompt) == nil {
 		t.Error("Unknown kind should try Codex detector")

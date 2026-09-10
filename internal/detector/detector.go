@@ -11,6 +11,9 @@ type MatchResult struct {
 	RuleName string // shown in status bar, e.g. "Claude"
 	Response string // sent to child PTY, e.g. "\r", "2\r"
 	Hash     string // sha256(prompt body) for memory deduplication
+	// PromptText optionally identifies the visible body independently of a
+	// partially redrawn footer. It is used only to suppress duplicate sends.
+	PromptText string
 }
 
 // Detector scans terminal screen text and returns a match if a prompt is found.

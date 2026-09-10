@@ -149,9 +149,133 @@ func ensureNotWritten(t *testing.T, pty *fakePTY, want string, wait time.Duratio
 const claudePrompt = "─────────────────────────────────────────────\r\n" +
 	" Read /etc/hosts\r\n\r\n 1. Yes\r\n 2. No\r\n\r\n Esc to cancel\r\n"
 
-const codexPrompt = "This command needs your approval\r\n" +
-	"  rm -rf /tmp/test\r\n" +
+const codexPrompt = "Would you like to run the following command?\r\n\r\n" +
+	"  $ echo hello\r\n\r\n› 1. Yes, proceed (y)\r\n  2. No (esc)\r\n\r\n" +
 	"Press enter to confirm or esc to cancel\r\n"
+
+func TestProxy_E2E_SelectionChangesDuringDelay(t *testing.T) {
+	for _, kind := range []agent.Kind{agent.KindCodex, agent.KindClaude} {
+		t.Run(kind.String(), func(t *testing.T) {
+			first, second, want := codexPrompt, strings.ReplaceAll(strings.ReplaceAll(codexPrompt, "› 1.", "  1."), "  2.", "› 2."), "y"
+			if kind == agent.KindClaude {
+				first = "────────────────────────\r\n Bash: echo hello\r\n\r\n❯ 1. Yes\r\n  2. Yes, don't ask again for: echo\r\n  3. No\r\n Esc to cancel\r\n"
+				second = strings.ReplaceAll(strings.ReplaceAll(first, "❯ 1.", "  1."), "  2.", "❯ 2.")
+				want = "\r"
+			}
+			pr, _, pty, stdin := makeProxy(t, kind, 1, true, nil)
+			done := runProxy(pr)
+			defer func() { pty.close(); stdin.close(); <-done }()
+			pty.send(first)
+			time.Sleep(250 * time.Millisecond)
+			pty.send("\x1b[2J\x1b[H" + second)
+			waitWritten(t, pty, want, 2*time.Second)
+			if got := pty.written(); got != want {
+				t.Fatalf("response = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestProxy_E2E_SeenPromptCancelsPreviousDelay(t *testing.T) {
+	pr, mem, pty, stdin := makeProxy(t, agent.KindClaude, 1, true, nil)
+	seenPrompt := strings.ReplaceAll(claudePrompt, "/etc/hosts", "/tmp/seen")
+	scr := screen.New(80, 24)
+	scr.Feed([]byte(seenPrompt))
+	mem.Record((detector.Claude{}).Detect(scr.Text()).Hash)
+	done := runProxy(pr)
+	defer func() { pty.close(); stdin.close(); <-done }()
+	pty.send(claudePrompt)
+	time.Sleep(250 * time.Millisecond)
+	pty.send("\x1b[2J\x1b[H" + seenPrompt)
+	waitWritten(t, pty, "\r", 500*time.Millisecond)
+	time.Sleep(time.Second)
+	if got := pty.written(); got != "\r" {
+		t.Fatalf("obsolete timer wrote another response: %q", got)
+	}
+}
+
+func TestProxy_E2E_ResizeInvalidatesDelayedMatch(t *testing.T) {
+	pty, stdin := newFakePTY(), newFakeStdin()
+	scr := screen.New(80, 24)
+	pr := proxy.New(proxy.Config{
+		PTY: pty, Stdin: stdin, Stdout: io.Discard,
+		Screen: scr, StatusBar: statusbar.New(24, 80, true, 1),
+		Term: term.NewNoOp(), Memory: memory.New(),
+		RuleChain: detector.RuleChain{detector.Codex{}},
+		AgentKind: agent.KindCodex, Delay: 1, Enabled: true,
+	})
+	done := runProxy(pr)
+	defer func() { pty.close(); stdin.close(); <-done }()
+	pty.send(codexPrompt)
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for (detector.Codex{}).Detect(scr.Text()) == nil && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if (detector.Codex{}).Detect(scr.Text()) == nil {
+		t.Fatal("prompt was not rendered")
+	}
+	// SIGWINCH can resize Screen without a corresponding PTY output frame.
+	time.Sleep(100 * time.Millisecond)
+	scr.Resize(10, 1)
+	ensureNotWritten(t, pty, "\r", 1100*time.Millisecond)
+}
+
+func TestProxy_E2E_FragmentedCodexApproval(t *testing.T) {
+	for _, footer := range []string{
+		"Press enter to confirm or esc to cancel",
+		"Press enter to confirm or esc to cancel or o to open thread",
+	} {
+		t.Run(footer, func(t *testing.T) {
+			pr, _, pty, stdin := makeProxy(t, agent.KindCodex, 0, true, nil)
+			done := runProxy(pr)
+			defer func() { pty.close(); stdin.close(); <-done }()
+			body := strings.Split(codexPrompt, "Press ")[0]
+			pty.send(body)
+			// Read boundaries can occur after the currently supported short
+			// footer and again inside its optional cross-thread suffix.
+			for _, part := range strings.Split(footer, " ") {
+				pty.send(part + " ")
+				time.Sleep(10 * time.Millisecond)
+			}
+			waitWritten(t, pty, "\r", time.Second)
+			time.Sleep(100 * time.Millisecond)
+			if got := pty.written(); got != "\r" {
+				t.Fatalf("fragmented footer produced extra keystrokes: %q", got)
+			}
+		})
+	}
+}
+
+func TestProxy_E2E_CodexReappearance(t *testing.T) {
+	pr, _, pty, stdin := makeProxy(t, agent.KindCodex, 0, true, nil)
+	done := runProxy(pr)
+	defer func() { pty.close(); stdin.close(); <-done }()
+	pty.send(codexPrompt)
+	waitWritten(t, pty, "\r", time.Second)
+	pty.send("\x1b[2J\x1b[HWorking...")
+	pty.send("\x1b[2J\x1b[H" + codexPrompt)
+	waitWritten(t, pty, "\r\r", time.Second)
+	if got := pty.written(); got != "\r\r" {
+		t.Fatalf("reappearing prompt response: %q", got)
+	}
+}
+
+func TestProxy_E2E_CodexFooterRedraw(t *testing.T) {
+	pr, _, pty, stdin := makeProxy(t, agent.KindCodex, 0, true, nil)
+	done := runProxy(pr)
+	defer func() { pty.close(); stdin.close(); <-done }()
+	pty.send(codexPrompt)
+	waitWritten(t, pty, "\r", time.Second)
+	moved := strings.ReplaceAll(strings.ReplaceAll(codexPrompt, "› 1.", "  1."), "  2.", "› 2.")
+	pty.send("\x1b[2J\x1b[H" + moved)
+	body := strings.Split(moved, "Press ")[0]
+	pty.send("\x1b[2J\x1b[H" + body + "Press enter to confirm or es")
+	pty.send("c to cancel")
+	time.Sleep(150 * time.Millisecond)
+	if got := pty.written(); got != "\r" {
+		t.Fatalf("redraw re-approved an unchanged request: %q", got)
+	}
+}
 
 const cursorPrompt = "┌──────────────────────────────────────┐\r\n" +
 	"│ Run shell command: ls -la            │\r\n" +
@@ -512,7 +636,16 @@ func TestProxy_E2E_PrefixKeyUnknown(t *testing.T) {
 }
 
 // makeProxyWithAfk wires up a proxy with AFK enabled and a short idle.
-func makeProxyWithAfk(t *testing.T, idle time.Duration, dryRun bool) (*proxy.Proxy, *fakePTY, *fakeStdin) {
+func makeProxyWithAfk(t *testing.T, idle time.Duration, dryRun bool, kinds ...agent.Kind) (*proxy.Proxy, *fakePTY, *fakeStdin) {
+	t.Helper()
+	kind := agent.KindClaude
+	if len(kinds) != 0 {
+		kind = kinds[0]
+	}
+	return makeProxyWithAfkConfig(t, idle, dryRun, kind, nil)
+}
+
+func makeProxyWithAfkConfig(t *testing.T, idle time.Duration, dryRun bool, kind agent.Kind, configure func(*proxy.Config)) (*proxy.Proxy, *fakePTY, *fakeStdin) {
 	t.Helper()
 	log, err := logger.New(t.TempDir() + "/test.log")
 	if err != nil {
@@ -523,8 +656,8 @@ func makeProxyWithAfk(t *testing.T, idle time.Duration, dryRun bool) (*proxy.Pro
 	stdin := newFakeStdin()
 	scr := screen.New(80, 24)
 	sb := statusbar.New(24, 80, true, 0)
-	chain := detector.RuleChain{agent.KindClaude.Detector()}
-	pr := proxy.New(proxy.Config{
+	chain := detector.RuleChain{kind.Detector()}
+	cfg := proxy.Config{
 		PTY:        pty,
 		Stdin:      stdin,
 		Stdout:     io.Discard,
@@ -534,50 +667,72 @@ func makeProxyWithAfk(t *testing.T, idle time.Duration, dryRun bool) (*proxy.Pro
 		Log:        log,
 		Term:       term.NewNoOp(),
 		Screen:     scr,
-		AgentKind:  agent.KindClaude,
+		AgentKind:  kind,
 		Delay:      0,
 		Enabled:    true,
 		DryRun:     dryRun,
 		AfkEnabled: true,
 		AfkIdle:    idle,
-	})
+	}
+	if configure != nil {
+		configure(&cfg)
+	}
+	pr := proxy.New(cfg)
 	return pr, pty, stdin
 }
 
-// 17. AFK fires after idle with y\r + continue message
-func TestProxy_E2E_AfkFires(t *testing.T) {
-	pr, pty, stdin := makeProxyWithAfk(t, 300*time.Millisecond, false)
-	defer stdin.close()
-	done := runProxy(pr)
+const afkTestMessage = "Continue the current task within the existing instructions."
+const afkTestPaste = "\x1b[200~" + afkTestMessage + "\x1b[201~"
 
-	waitWritten(t, pty, "y\r", 1*time.Second)
-	waitWritten(t, pty, "continue, Choose based on your project understanding.\r", 1*time.Second)
-
-	pty.close()
-	<-done
+// Constructed idle composer layouts. Codex's placeholder and footer match
+// the local upstream chat_composer empty snapshot; Claude is synthetic.
+func afkTestScreen(kind agent.Kind, question, draft string) string {
+	marker, assistant := "❯", "⏺"
+	visibleDraft := draft
+	if kind == agent.KindCodex {
+		marker, assistant = "›", "•"
+		if draft == "" {
+			visibleDraft = "Ask Codex to do anything"
+		}
+	}
+	return fmt.Sprintf("\x1b[2J\x1b[H%s %s\r\n\r\n%s %s\r\n\r\n  ? for shortcuts\x1b[%d;%dH\x1b[?25h",
+		assistant, question, marker, visibleDraft, 3+strings.Count(question, "\n"), 3+len(draft))
 }
 
-// 18. AFK rearms and fires a second time while still idle
-func TestProxy_E2E_AfkRearmsAndFiresTwice(t *testing.T) {
-	pr, pty, stdin := makeProxyWithAfk(t, 300*time.Millisecond, false)
+// 17. AFK pastes once, then submits only after the draft is visible.
+func TestProxy_E2E_AfkFires(t *testing.T) {
+	for _, kind := range []agent.Kind{agent.KindCodex, agent.KindClaude} {
+		t.Run(kind.String(), func(t *testing.T) {
+			pr, pty, stdin := makeProxyWithAfk(t, 100*time.Millisecond, false, kind)
+			defer stdin.close()
+			done := runProxy(pr)
+			defer func() { pty.close(); <-done }()
+			pty.send(afkTestScreen(kind, "Should I continue?", ""))
+			waitWritten(t, pty, afkTestPaste, time.Second)
+			ensureNotWritten(t, pty, "\r", 350*time.Millisecond)
+			pty.send(afkTestScreen(kind, "Should I continue?", afkTestMessage))
+			waitWritten(t, pty, afkTestPaste+"\r", time.Second)
+			if got := pty.written(); got != afkTestPaste+"\r" {
+				t.Fatalf("unexpected AFK keystrokes: %q", got)
+			}
+		})
+	}
+}
+
+// 18. An unanswered question must not receive repeated nudges.
+func TestProxy_E2E_AfkDoesNotRepeatUnansweredQuestion(t *testing.T) {
+	pr, pty, stdin := makeProxyWithAfk(t, 100*time.Millisecond, false)
 	defer stdin.close()
 	done := runProxy(pr)
-
-	waitWritten(t, pty, "continue, Choose based on your project understanding.\r", 1*time.Second)
-
-	// Count how many "continue, ..." strings appear after the second idle window
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if strings.Count(pty.written(), "continue, Choose based on your project understanding.\r") >= 2 {
-			pty.close()
-			<-done
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
+	defer func() { pty.close(); <-done }()
+	pty.send(afkTestScreen(agent.KindClaude, "Should I continue?", ""))
+	waitWritten(t, pty, afkTestPaste, time.Second)
+	time.Sleep(2300 * time.Millisecond) // includes missing-echo timeout
+	pty.send(afkTestScreen(agent.KindClaude, "Should I continue?", ""))
+	time.Sleep(250 * time.Millisecond)
+	if got := pty.written(); got != afkTestPaste {
+		t.Fatalf("repeated or blindly submitted AFK message: %q", got)
 	}
-	t.Errorf("expected 2 AFK fires; got written=%q", pty.written())
-	pty.close()
-	<-done
 }
 
 // 19. Output from child during idle window keeps resetting the AFK timer
@@ -585,6 +740,7 @@ func TestProxy_E2E_AfkResetOnOutput(t *testing.T) {
 	pr, pty, stdin := makeProxyWithAfk(t, 300*time.Millisecond, false)
 	defer stdin.close()
 	done := runProxy(pr)
+	pty.send(afkTestScreen(agent.KindClaude, "Should I continue?", ""))
 
 	// Keep pumping output every 100 ms for ~600 ms (>2× the idle window).
 	// A WaitGroup ensures the sender goroutine has fully exited before we
@@ -601,12 +757,12 @@ func TestProxy_E2E_AfkResetOnOutput(t *testing.T) {
 			case <-stop:
 				return
 			case <-tk.C:
-				pty.send(".")
+				pty.send(afkTestScreen(agent.KindClaude, "Should I continue?", ""))
 			}
 		}
 	}()
 
-	ensureNotWritten(t, pty, "y\r", 600*time.Millisecond)
+	ensureNotWritten(t, pty, afkTestPaste, 600*time.Millisecond)
 	close(stop)
 	senderWg.Wait()
 	pty.close()
@@ -617,6 +773,7 @@ func TestProxy_E2E_AfkResetOnOutput(t *testing.T) {
 func TestProxy_E2E_AfkResetOnUserInput(t *testing.T) {
 	pr, pty, stdin := makeProxyWithAfk(t, 300*time.Millisecond, false)
 	done := runProxy(pr)
+	pty.send(afkTestScreen(agent.KindClaude, "Should I continue?", ""))
 
 	stop := make(chan struct{})
 	var senderWg sync.WaitGroup
@@ -635,7 +792,7 @@ func TestProxy_E2E_AfkResetOnUserInput(t *testing.T) {
 		}
 	}()
 
-	ensureNotWritten(t, pty, "y\r", 600*time.Millisecond)
+	ensureNotWritten(t, pty, afkTestPaste, 600*time.Millisecond)
 	close(stop)
 	senderWg.Wait()
 	stdin.close()
@@ -648,12 +805,13 @@ func TestProxy_E2E_AfkDryRun(t *testing.T) {
 	pr, pty, stdin := makeProxyWithAfk(t, 200*time.Millisecond, true /*dryRun*/)
 	defer stdin.close()
 	done := runProxy(pr)
+	pty.send(afkTestScreen(agent.KindClaude, "Should I continue?", ""))
 
 	// Wait long enough for a real fire to have happened
 	time.Sleep(500 * time.Millisecond)
 
-	if strings.Contains(pty.written(), "y\r") ||
-		strings.Contains(pty.written(), "continue, Choose") {
+	if strings.Contains(pty.written(), afkTestPaste) ||
+		strings.Contains(pty.written(), afkTestMessage) {
 		t.Errorf("dry-run wrote to PTY: %q", pty.written())
 	}
 
@@ -666,17 +824,18 @@ func TestProxy_E2E_AfkToggleViaPrefix(t *testing.T) {
 	pr, pty, stdin := makeProxyWithAfk(t, 250*time.Millisecond, false)
 	defer stdin.close()
 	done := runProxy(pr)
+	pty.send(afkTestScreen(agent.KindClaude, "Should I continue?", ""))
 
 	// Toggle OFF before any fire
 	stdin.send("\x19a")
 	time.Sleep(50 * time.Millisecond)
 
 	// No fire expected for >2× idle duration
-	ensureNotWritten(t, pty, "y\r", 700*time.Millisecond)
+	ensureNotWritten(t, pty, afkTestPaste, 700*time.Millisecond)
 
 	// Toggle ON — fire should occur within one idle window
 	stdin.send("\x19a")
-	waitWritten(t, pty, "y\r", 1*time.Second)
+	waitWritten(t, pty, afkTestPaste, 1*time.Second)
 
 	pty.close()
 	<-done
@@ -791,6 +950,7 @@ func TestProxy_E2E_AfkToggleOffCancelsPendingFire(t *testing.T) {
 	pr, pty, stdin := makeProxyWithAfk(t, 250*time.Millisecond, false)
 	defer stdin.close()
 	done := runProxy(pr)
+	pty.send(afkTestScreen(agent.KindClaude, "Should I continue?", ""))
 
 	// Let the idle timer arm and start counting down.
 	time.Sleep(100 * time.Millisecond)
@@ -799,7 +959,7 @@ func TestProxy_E2E_AfkToggleOffCancelsPendingFire(t *testing.T) {
 	stdin.send("\x19a")
 
 	// Wait longer than the original idle window would have needed; no fire.
-	ensureNotWritten(t, pty, "y\r", 600*time.Millisecond)
+	ensureNotWritten(t, pty, afkTestPaste, 600*time.Millisecond)
 
 	pty.close()
 	<-done
@@ -1311,7 +1471,7 @@ func TestProxy_E2E_SpacedCtrlC_DoesNotKill(t *testing.T) {
 	<-done
 }
 
-//  33. Safety ON: AFK refuses to blind-nudge when the screen shows a
+//  33. Safety ON: AFK refuses to paste a continuation when the screen shows a
 //     deletion-class command.
 func TestProxy_E2E_SafetyBlocksAfkNudgeWithDanger(t *testing.T) {
 	log, err := logger.New(t.TempDir() + "/test.log")
@@ -1345,9 +1505,9 @@ func TestProxy_E2E_SafetyBlocksAfkNudgeWithDanger(t *testing.T) {
 	done := runProxy(pr)
 
 	// Plant a dangerous-looking command on the screen.
-	pty.send("about to run: rm -rf /\r\n")
+	pty.send(afkTestScreen(agent.KindClaude, "rm -rf /\r\nShould I continue?", ""))
 
-	// AFK would fire at ~200ms idle. With safety on, the y+continue must
+	// AFK would fire at ~200ms idle. With safety on, the continuation must
 	// not land on the PTY.
 	time.Sleep(600 * time.Millisecond)
 	if got := pty.written(); len(got) != 0 {

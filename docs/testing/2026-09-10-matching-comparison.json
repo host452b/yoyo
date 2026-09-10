@@ -1,0 +1,758 @@
+{
+  "baseline_commit": "08c9acabc8cb2519cb18d8b9ed569d90a4ece9e4",
+  "candidate_sha256": "e89462ed5030a54155b3d68bd259331c0d3f3eff51375db74135c38eff85962f",
+  "comparison": "working tree snapshot with identical current tests",
+  "counting": "leaf cases; widths and parameter variants are separate cases",
+  "scope": "curated regression corpus; raw production dump coverage not established",
+  "test_pattern": "^(TestCodex.*|TestScreen_SplitUTF8AndANSI|TestScreen_StreamEquivalence.*|TestClaude_3OptionPrompt.*|TestCursor_.*|TestProxy_E2E_(SelectionChangesDuringDelay|SeenPromptCancelsPreviousDelay|ResizeInvalidatesDelayedMatch|FragmentedCodexApproval|CodexReappearance|CodexFooterRedraw))$",
+  "counts": {
+    "unchanged_pass": 51,
+    "fixed": 42
+  },
+  "cases": [
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestClaude_3OptionPrompt_Bash",
+      "origin": "historical_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestClaude_3OptionPrompt_PreselectedDontAskAgain",
+      "origin": "historical_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_CommandPrompt",
+      "origin": "constructed_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_DefaultResponse",
+      "origin": "constructed_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_EditPrompt",
+      "origin": "constructed_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_HashPreservesCommandAndIgnoresSelection/command_marker_preserved",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_HashPreservesCommandAndIgnoresSelection/quoted_spaces_preserved",
+      "origin": "constructed_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_HashPreservesCommandAndIgnoresSelection/selection_ignored",
+      "origin": "constructed_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_McpPrompt",
+      "origin": "constructed_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_NoFooter",
+      "origin": "constructed_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_NoMatch",
+      "origin": "constructed_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StripsSelectionMarker",
+      "origin": "constructed_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/approval_key_opens_thread",
+      "origin": "constructed_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/complete",
+      "origin": "constructed_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/conflicting_key",
+      "origin": "constructed_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/custom_approval",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/custom_confirmation",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/enter_assigned_to_cancel",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/enter_assigned_to_rejection",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/footer_ends_before_cancel_binding",
+      "origin": "constructed_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/general_question",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/header_and_footer_only",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/missing_reject",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/missing_selection",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/multiple_selections",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/new_incomplete_menu",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/number_gap",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/off-target_with_no_shortcut",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/old_title_with_unrelated_new_menu",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/persistent_grant_only",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/quoted_header",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/quoted_menu",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/rejection_selected",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/session_grant_selected",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/stale_menu",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/unknown_yes",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/unsupported_keys",
+      "origin": "constructed_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/wrapped_footer",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/wrapped_label",
+      "origin": "constructed_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_StructuralMatching/wrapped_title",
+      "origin": "constructed_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_UpstreamSnapshots/additional-permissions.txt/120",
+      "origin": "upstream_snapshot",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_UpstreamSnapshots/additional-permissions.txt/60",
+      "origin": "upstream_snapshot",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_UpstreamSnapshots/additional-permissions.txt/80",
+      "origin": "upstream_snapshot",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_UpstreamSnapshots/cross-thread.txt/120",
+      "origin": "upstream_snapshot",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_UpstreamSnapshots/cross-thread.txt/60",
+      "origin": "upstream_snapshot",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_UpstreamSnapshots/cross-thread.txt/80",
+      "origin": "upstream_snapshot",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_UpstreamSnapshots/exec.txt/120",
+      "origin": "upstream_snapshot",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_UpstreamSnapshots/exec.txt/60",
+      "origin": "upstream_snapshot",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_UpstreamSnapshots/exec.txt/80",
+      "origin": "upstream_snapshot",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_UpstreamSnapshots/network.txt/120",
+      "origin": "upstream_snapshot",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_UpstreamSnapshots/network.txt/60",
+      "origin": "upstream_snapshot",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_UpstreamSnapshots/network.txt/80",
+      "origin": "upstream_snapshot",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_UpstreamSnapshots/patch.txt/120",
+      "origin": "upstream_snapshot",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_UpstreamSnapshots/patch.txt/60",
+      "origin": "upstream_snapshot",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_UpstreamSnapshots/patch.txt/80",
+      "origin": "upstream_snapshot",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_UpstreamSnapshots/permissions.txt/120",
+      "origin": "upstream_snapshot",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_UpstreamSnapshots/permissions.txt/60",
+      "origin": "upstream_snapshot",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_UpstreamSnapshots/permissions.txt/80",
+      "origin": "upstream_snapshot",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_UpstreamSnapshots/stdin.txt/120",
+      "origin": "upstream_snapshot",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_UpstreamSnapshots/stdin.txt/60",
+      "origin": "upstream_snapshot",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCodex_UpstreamSnapshots/stdin.txt/80",
+      "origin": "upstream_snapshot",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCursor_CommandBoxWithoutPromptIsIgnored",
+      "origin": "existing_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCursor_CommandPrompt",
+      "origin": "existing_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCursor_DefaultResponse",
+      "origin": "existing_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCursor_IgnoresInputBox",
+      "origin": "existing_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCursor_NoMatchWithoutBox",
+      "origin": "existing_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCursor_NoMatchWithoutOptions",
+      "origin": "existing_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCursor_PicksLastBox",
+      "origin": "existing_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/detector",
+      "test": "TestCursor_PromptBelowCommandBox",
+      "origin": "existing_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/proxy",
+      "test": "TestProxy_E2E_CodexFooterRedraw",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/proxy",
+      "test": "TestProxy_E2E_CodexReappearance",
+      "origin": "constructed_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/proxy",
+      "test": "TestProxy_E2E_FragmentedCodexApproval/Press_enter_to_confirm_or_esc_to_cancel",
+      "origin": "constructed_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/proxy",
+      "test": "TestProxy_E2E_FragmentedCodexApproval/Press_enter_to_confirm_or_esc_to_cancel_or_o_to_open_thread",
+      "origin": "constructed_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/proxy",
+      "test": "TestProxy_E2E_ResizeInvalidatesDelayedMatch",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/proxy",
+      "test": "TestProxy_E2E_SeenPromptCancelsPreviousDelay",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/proxy",
+      "test": "TestProxy_E2E_SelectionChangesDuringDelay/claude",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/proxy",
+      "test": "TestProxy_E2E_SelectionChangesDuringDelay/codex",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/screen",
+      "test": "TestScreen_SplitUTF8AndANSI",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/screen",
+      "test": "TestScreen_StreamEquivalence/claude/chunk_1",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/screen",
+      "test": "TestScreen_StreamEquivalence/claude/chunk_2",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/screen",
+      "test": "TestScreen_StreamEquivalence/claude/chunk_3",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/screen",
+      "test": "TestScreen_StreamEquivalence/claude/chunk_4096",
+      "origin": "constructed_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/screen",
+      "test": "TestScreen_StreamEquivalence/claude/chunk_7",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/screen",
+      "test": "TestScreen_StreamEquivalence/codex/chunk_1",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/screen",
+      "test": "TestScreen_StreamEquivalence/codex/chunk_2",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/screen",
+      "test": "TestScreen_StreamEquivalence/codex/chunk_3",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/screen",
+      "test": "TestScreen_StreamEquivalence/codex/chunk_4096",
+      "origin": "constructed_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/screen",
+      "test": "TestScreen_StreamEquivalence/codex/chunk_7",
+      "origin": "constructed_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/screen",
+      "test": "TestScreen_StreamEquivalence/cursor/chunk_1",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/screen",
+      "test": "TestScreen_StreamEquivalence/cursor/chunk_2",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/screen",
+      "test": "TestScreen_StreamEquivalence/cursor/chunk_3",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/screen",
+      "test": "TestScreen_StreamEquivalence/cursor/chunk_4096",
+      "origin": "constructed_regression",
+      "baseline": "pass",
+      "current": "pass",
+      "outcome": "unchanged_pass"
+    },
+    {
+      "package": "github.com/host452b/yoyo/internal/screen",
+      "test": "TestScreen_StreamEquivalence/cursor/chunk_7",
+      "origin": "constructed_regression",
+      "baseline": "fail",
+      "current": "pass",
+      "outcome": "fixed"
+    }
+  ]
+}

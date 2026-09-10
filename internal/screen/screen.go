@@ -3,6 +3,7 @@ package screen
 import (
 	"sync"
 	"sync/atomic"
+	"unicode/utf8"
 
 	"github.com/hinshun/vt10x"
 	"github.com/host452b/yoyo/internal/logger"
@@ -12,10 +13,11 @@ import (
 // data and retrieving visible text.
 // All methods are goroutine-safe (SIGWINCH resize races with event loop writes).
 type Screen struct {
-	mu         sync.Mutex
-	terminal   vt10x.Terminal
-	panicCount int64 // incremented each time Feed recovers a vt10x panic
-	log        *logger.Logger
+	mu          sync.Mutex
+	terminal    vt10x.Terminal
+	panicCount  int64 // incremented each time Feed recovers a vt10x panic
+	log         *logger.Logger
+	pendingUTF8 []byte // incomplete trailing rune, at most utf8.UTFMax-1 bytes
 }
 
 // New creates a new Screen with the specified dimensions (cols, rows).
@@ -44,7 +46,24 @@ func (s *Screen) Feed(data []byte) {
 			}
 		}
 	}()
-	s.terminal.Write(data)
+	// vt10x.Write uses a fresh bytes.Reader per call and does not retain an
+	// incomplete UTF-8 rune. PTY read boundaries can split any rune, including
+	// the selection marker and box borders used by the detectors.
+	if len(s.pendingUTF8) > 0 {
+		data = append(s.pendingUTF8, data...)
+	}
+	end := len(data)
+	if end > 0 {
+		start := end - 1
+		for start > 0 && end-start < utf8.UTFMax && !utf8.RuneStart(data[start]) {
+			start--
+		}
+		if !utf8.FullRune(data[start:]) {
+			end = start
+		}
+	}
+	s.pendingUTF8 = append([]byte(nil), data[end:]...)
+	s.terminal.Write(data[:end])
 }
 
 // Text returns the visible text content of the screen, with ANSI sequences stripped.
@@ -52,6 +71,24 @@ func (s *Screen) Text() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.terminal.String()
+}
+
+// Snapshot captures text and cursor together so input checks cannot combine
+// different terminal states during a resize or redraw.
+type Snapshot struct {
+	Text             string
+	CursorX, CursorY int
+	CursorVisible    bool
+}
+
+func (s *Screen) Snapshot() Snapshot {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cursor := s.terminal.Cursor()
+	return Snapshot{
+		Text: s.terminal.String(), CursorX: cursor.X, CursorY: cursor.Y,
+		CursorVisible: s.terminal.CursorVisible() && len(s.pendingUTF8) == 0,
+	}
 }
 
 // Resize changes the screen dimensions.

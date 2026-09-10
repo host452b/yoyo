@@ -37,8 +37,8 @@ DESCRIPTION
   automatically sends the confirmation keystroke after a configurable delay.
 
   A status bar is rendered in the bottom-right corner of the terminal:
-    [yoyo: on 3s]           — enabled, 3-second delay before auto-approve
-    [yoyo: on 3s | Claude]  — a prompt was detected (rule name shown)
+    [yoyo: on 1s]           — enabled, 1-second delay before auto-approve
+    [yoyo: on 1s | Claude]  — a prompt was detected (rule name shown)
     [yoyo: on 0s | seen: X] — prompt already approved this session, sent immediately
     [yoyo: off]             — auto-approve disabled (manual mode)
 
@@ -53,7 +53,7 @@ FLAGS
   -delay int
         Seconds to wait before auto-approving a detected prompt.
         0 = approve immediately (no countdown).
-        -1 = use value from config file (default: 3).
+        -1 = use value from config file (default: 1).
         Explicit -delay always takes priority over per-agent config.
 
   -config string
@@ -67,9 +67,12 @@ FLAGS
         The status bar shows "dry" instead of "on". Useful for testing rules.
 
   -afk
-        Enable AFK mode: after afk-idle without any output or input, yoyo
-        injects 'y' + Enter, then 'continue, Choose based on your project
-        understanding.' + Enter, and rearms. Loops until Ctrl+Y a is pressed.
+        After afk-idle without output or input, check for a recognized
+        Codex/Claude empty composer and a simple continuation question.
+        Paste one continuation message; submit only after verified draft
+        echo. Skip unknown/busy/approval screens and existing drafts.
+        User input or missing echo cancels submission. Each question is
+        attempted once per session. Toggle with Ctrl+Y a.
 
   -afk-idle duration
         Idle threshold before AFK fires (default 10m). Accepts Go duration
@@ -116,7 +119,7 @@ RUNTIME CONTROLS  (Ctrl+Y is the prefix key)
 
 CONFIG FILE  (~/.config/yoyo/config.toml)
   [defaults]
-  delay    = 3       # default approval delay in seconds
+  delay    = 1       # default approval delay in seconds
   enabled  = true    # start with auto-approve on
   afk      = false   # enable AFK idle-nudge mode
   afk_idle = "10m"   # idle threshold before nudging
@@ -141,7 +144,7 @@ CONFIG FILE  (~/.config/yoyo/config.toml)
   response = "y\r"
 
 EXAMPLES
-  # Wrap claude with default settings (3-second delay)
+  # Wrap claude with default settings (1-second delay)
   yoyo claude
 
   # Wrap claude, approve immediately

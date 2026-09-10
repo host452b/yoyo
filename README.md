@@ -14,7 +14,7 @@ confirmation keystroke after a configurable delay — so you don't have to babys
 
 **Why it exists.** Agentic CLIs ask you to confirm every shell command, file edit, or
 network call. On a long unattended run (`yoyo -afk claude`), yoyo pipes back "yes" for
-recognised prompts while a 3-second countdown lets you intercept anything that looks
+recognised prompts while a 1-second countdown lets you intercept anything that looks
 wrong. A deletion-command safety guard refuses to auto-approve destructive shapes
 (`rm -rf`, `DROP TABLE`, `kubectl delete`, `terraform destroy`, …). See the
 [Safety guard](#safety-guard-deletion-commands) section for the full list.
@@ -88,7 +88,7 @@ sudo mv yoyo /usr/local/bin/
 ### Verify
 
 ```bash
-yoyo -v      # prints the installed version, e.g. "yoyo v2.5.3"
+yoyo -v      # prints the installed version, e.g. "yoyo v2.6.0"
 yoyo -h      # full usage
 ```
 
@@ -108,7 +108,7 @@ The config (`~/.config/yoyo/config.toml`), log (`~/.yoyo/yoyo.log`), and in-proc
 ## Quick Start
 
 ```bash
-# Wrap claude with default settings (3-second delay before auto-approve)
+# Wrap claude with default settings (1-second delay before auto-approve)
 yoyo claude
 
 # Approve immediately (no delay)
@@ -145,12 +145,12 @@ yoyo -delay 5 codex
 ## Status Bar
 
 ```
-[yoyo: on 3s]           enabled, 3-second delay, no prompt detected yet
+[yoyo: on 1s]           enabled, 1-second delay, no prompt detected yet
 [yoyo: on 2s | Claude]  prompt detected — countdown active (2s remaining)
 [yoyo: on 0s | seen: X] already approved this session — sent immediately
 [yoyo: off]             auto-approve disabled (manual mode)
 [yoyo: ^Y …]           waiting for Ctrl+Y command key
-[yoyo: dry 3s]          dry-run mode — detects but does not approve
+[yoyo: dry 1s]          dry-run mode — detects but does not approve
 ```
 
 - **Green** = auto-approve active
@@ -171,8 +171,15 @@ more general fallbacks you can layer on.
 | Agent | Command | What yoyo looks for |
 |-------|---------|---------------------|
 | [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview) | `claude` | `───` bordered permission box + numbered `Yes` / `No` options |
-| [OpenAI Codex CLI](https://github.com/openai/codex) | `codex` | "Would you like to" / "needs your approval" headers + "Press enter to confirm or esc to cancel" footer |
+| [OpenAI Codex CLI](https://github.com/openai/codex) | `codex` | Approval title + complete numbered approval/rejection options + one selection marker + confirmation/cancellation footer; covers commands, network, terminal input, edits, permissions, and MCP approvals |
 | [Cursor Agent](https://cursor.com/agents) | `cursor`, `cursor-agent`, `agent` | `┌─┐` box-drawn prompts with `(y)` / `n)` options (both old box-internal layout and new box-above / options-below layout). `agent` as a plain command name is not hard-coded into command-based detection (too generic — clashes with `ssh-agent` etc.); yoyo auto-identifies it from Cursor's banner text in the first 10 output frames. |
+
+Codex approvals choose the recognized single-request option. yoyo sends Enter
+when that option is selected and the footer advertises Enter; otherwise it uses
+the option's displayed plain letter shortcut. Wrapped menu text is supported.
+Incomplete menus, ordinary questions, and unsupported or ambiguous choices wait
+for manual input. Custom regex rules and opt-in fuzzy/AFK fallbacks have their
+own matching behavior.
 
 Running `yoyo claude` / `yoyo codex` / `yoyo cursor` picks the right detector
 automatically from the command name. If you launch via a wrapper script (or
@@ -194,14 +201,14 @@ handled. Listed from most specific to most generic:
    when the screen is stable and contains an unambiguous marker like `(y/n)`,
    `[Y/n]`, `yes/no`. Works for any agent whose prompt surfaces one of those
    shapes without needing to know anything else about it.
-3. **AFK mode** (`-afk`) — a dumb idle timer. If the terminal is fully silent
-   for `-afk-idle` (default 10 min), yoyo injects `y` + Enter plus a generic
-   "continue" instruction. Last-resort escape hatch for unmatched prompts
-   during long unattended runs.
+3. **AFK mode** (`-afk`) — after `-afk-idle` (default 10 min) without input
+   or output, a recognized Codex/Claude empty composer and an explicit
+   continuation-only question can receive one continuation message. Unknown
+   layouts, approvals, drafts, busy screens, and completed answers are skipped.
 
-Combine them freely: `yoyo -fuzzy -afk -afk-idle 5m my-agent` gives layered
-coverage — custom rules win if configured, then fuzzy within seconds, then
-AFK as the slow backstop.
+Custom rules and fuzzy can cover other tools. AFK currently supports only
+recognized Codex and Claude composer layouts; it does not blindly answer
+unmatched prompts.
 
 ---
 
@@ -215,7 +222,7 @@ yoyo [flags] <command> [args...]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-delay int` | `3` (from config) | Seconds to wait before auto-approving. `0` = approve immediately. `-1` = use config value. Explicit flag always takes priority over per-agent config. |
+| `-delay int` | `1` (from config) | Seconds to wait before auto-approving. `0` = approve immediately. `-1` = use config value. Explicit flag always takes priority over per-agent config. |
 | `-config string` | `~/.config/yoyo/config.toml` | Path to TOML config file. Supports `~/`. |
 | `-log string` | `~/.yoyo/yoyo.log` | Path to log file. Supports `~/`. |
 | `-dry-run` | off | Detect prompts but do not send approval keystrokes. The status bar shows `dry` instead of `on`. Useful for testing custom rules. |
@@ -287,18 +294,36 @@ fragments may be in there.
 
 ### AFK mode
 
-Some agent prompts don't match yoyo's detectors and the agent blocks on
-`read()` forever. `-afk` sets a dumb idle timer that nudges the agent
-after a configured silence:
+AFK is an opt-in continuation helper for supported Codex and Claude layouts.
+After a configured silence, it checks whether the agent is explicitly asking
+to continue in an idle composer:
 
 ```
 yoyo -afk -afk-idle 10m claude
 ```
 
-Every time the terminal sees no output *and* no input for the idle window,
-yoyo injects `y` + Enter, pauses briefly, then sends
-`continue, Choose based on your project understanding.` + Enter, and
-rearms. Toggle at runtime with `Ctrl+Y a`.
+After the idle window, yoyo requires a visible cursor in an empty composer,
+a recognized shortcuts footer, and the last assistant message ending in a
+simple continuation question such as `Should I continue?` or `需要我继续吗？`.
+It skips approvals, choice dialogs, busy screens, drafts, quoted/code examples,
+completed answers, and unfamiliar layouts. Custom status bars, remapped keys,
+and alternative wording may therefore require manual input.
+
+It pastes `Continue the current task within the existing instructions.` using
+bracketed paste, then waits for that exact draft to appear in the same composer.
+Only after at least 300 ms without output does it send Enter separately.
+User input, AFK-off, a changed composer, a deletion-command safety match, a
+write failure, or missing echo within 2 seconds cancels submission. A cancelled
+draft is left visible for the user to inspect; yoyo does not erase it.
+
+Each assistant-question hash is attempted at most once per session, including
+failed attempts. A different question/context can trigger a new attempt.
+AFK remains independent of auto-approve, stays off by default, and respects
+`-dry-run`. Toggle at runtime with `Ctrl+Y a`.
+
+Codex layout checks use local upstream source; Claude idle layouts are covered
+by constructed tests. These checks do not establish compatibility with every
+installed CLI version or reveal the agent's internal execution state.
 
 ### Safety guard (deletion commands)
 
@@ -343,9 +368,8 @@ yoyo -fuzzy claude
 
 Fuzzy matches go through the normal approval flow, so `-delay` and
 `memory`-based dedup still apply. Toggle at runtime with `Ctrl+Y f`.
-Combine with `-afk` for layered coverage: fuzzy handles recognisable
-stalls within seconds, AFK catches everything else after the idle
-window.
+AFK can also be enabled, but only handles recognized continuation questions
+after its idle window; it does not cover every unmatched interaction.
 
 ---
 
@@ -355,7 +379,7 @@ Default location: `~/.config/yoyo/config.toml`
 
 ```toml
 [defaults]
-delay        = 3              # approval delay in seconds (0 = immediate)
+delay        = 1              # approval delay in seconds (0 = immediate)
 enabled      = true           # start with auto-approve on
 afk          = false          # enable AFK idle-nudge mode
 afk_idle     = "10m"          # idle threshold before nudging
@@ -503,7 +527,7 @@ Requirements: Go 1.22+ to build from source.
 |---|---|---|
 | **Safety guard** (default ON) | Refuses to auto-approve when the screen shows a deletion-class command (`rm -rf`, `git rm -r`, `git clean -f…`, `find -delete`, SQL `DROP` / `TRUNCATE`, `kubectl delete`, `terraform destroy`, `docker/podman volume rm` / `system prune`). Status bar flips to `danger: <snippet>`. See [Safety guard](#safety-guard-deletion-commands). | `-no-safety` |
 | **Config file perm check** | Warns to stderr at startup if `~/.config/yoyo/config.toml` is group- or world-writable — a writable config lets an attacker inject `[[rules]]` with `pattern=".*" response="y\r"` and auto-approve anything. | `chmod 600 ~/.config/yoyo/config.toml` to suppress the warning |
-| **Approval delay** | Default 3 s countdown during which any non-escape key cancels the pending auto-approve. Lets you review before yoyo acts. | `-delay 0` |
+| **Approval delay** | Default 1 s countdown during which any non-escape key cancels the pending auto-approve. Lets you review before yoyo acts. | `-delay 0` |
 | **Force-kill escape hatch** | `Ctrl+Y q`, or 3× `Ctrl-C` within 1 s, SIGKILL's the child — for agents that wedge their own Ctrl-C handling. | always on |
 | **Session memory dedup** | Identical prompts across a session aren't re-approved with delay — ensures once-reviewed gets one-reviewed semantics. | in-process only (no persistence) |
 

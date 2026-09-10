@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,8 +20,11 @@ import (
 )
 
 const (
-	prefixByte    = byte(0x19) // Ctrl+Y
-	prefixTimeout = 1500 * time.Millisecond
+	prefixByte       = byte(0x19) // Ctrl+Y
+	prefixTimeout    = 1500 * time.Millisecond
+	afkMessage       = "Continue the current task within the existing instructions."
+	afkSubmitQuiet   = 300 * time.Millisecond
+	afkSubmitTimeout = 2 * time.Second
 )
 
 // Config holds all dependencies for the Proxy.
@@ -186,7 +190,18 @@ func (p *Proxy) Run() error {
 	var timerCh <-chan time.Time
 	var lastResult *detector.MatchResult
 	var approvedHash string        // suppress re-approvals while prompt is still on screen
+	var approvedText string        // optional body evidence survives a partial footer redraw
 	var approvalDeadline time.Time // for countdown display
+	rememberApproved := func(result *detector.MatchResult) {
+		approvedHash, approvedText = result.Hash, result.PromptText
+	}
+	cancelApproval := func() {
+		if approvalTimer != nil {
+			approvalTimer.Stop()
+		}
+		approvalTimer, timerCh, lastResult = nil, nil, nil
+		cfg.StatusBar.SetCountdown(-1)
+	}
 
 	var prefixTimer *time.Timer
 	var prefixTimerCh <-chan time.Time
@@ -201,9 +216,27 @@ func (p *Proxy) Run() error {
 	var afkIdleTimerCh <-chan time.Time
 	var afkDeadline time.Time    // zero = idle timer inactive
 	var afkNudgedUntil time.Time // status-bar flash window after a fire
+	afkAttempted := make(map[string]bool)
+	var afkPending string
+	var afkSubmitTimer *time.Timer
+	var afkSubmitTimerCh <-chan time.Time
+	var afkSubmitUntil, afkLastOutput time.Time
+	stopAfkSubmit := func() {
+		if afkSubmitTimer != nil {
+			afkSubmitTimer.Stop()
+		}
+		afkSubmitTimer, afkSubmitTimerCh, afkPending = nil, nil, ""
+	}
+	armAfkSubmit := func(after time.Duration) {
+		if afkSubmitTimer != nil {
+			afkSubmitTimer.Stop()
+		}
+		afkSubmitTimer = time.NewTimer(after)
+		afkSubmitTimerCh = afkSubmitTimer.C
+	}
 
 	armAfk := func() {
-		if !afkEnabled || cfg.AfkIdle <= 0 {
+		if !afkEnabled || cfg.AfkIdle <= 0 || afkPending != "" {
 			afkDeadline = time.Time{}
 			return
 		}
@@ -215,6 +248,7 @@ func (p *Proxy) Run() error {
 		afkDeadline = time.Now().Add(cfg.AfkIdle)
 	}
 	stopAfk := func() {
+		stopAfkSubmit()
 		if afkIdleTimer != nil {
 			afkIdleTimer.Stop()
 		}
@@ -310,6 +344,13 @@ func (p *Proxy) Run() error {
 				stopFuzzy()
 				closeDone()
 				return nil
+			}
+			if len(data) > 0 && afkPending != "" {
+				stopAfkSubmit() // even escape/navigation keys belong to the user
+				armAfk()
+				if cfg.Log != nil {
+					cfg.Log.Infof("afk: submission cancelled by user input")
+				}
 			}
 			// Kitty keyboard protocol: terminals such as Ghostty encode
 			// Ctrl+Y as "\x1b[121;5u" (not the legacy 0x19 byte) once the
@@ -467,6 +508,7 @@ func (p *Proxy) Run() error {
 			}
 
 			cfg.Screen.Feed(data)
+			afkLastOutput = time.Now()
 			if afkIdleTimer != nil {
 				afkIdleTimer.Reset(cfg.AfkIdle)
 				afkDeadline = time.Now().Add(cfg.AfkIdle)
@@ -498,13 +540,20 @@ func (p *Proxy) Run() error {
 			if enabled {
 				result := chain.Detect(text)
 				if result == nil {
-					approvedHash = "" // prompt gone, allow future re-approval
-					lastResult = nil  // reset so the next fresh appearance starts a new countdown
+					// A split or redrawn footer can temporarily stop matching while
+					// the approved body is still visible. Retain its send suppression.
+					if approvedText == "" || !strings.Contains(text, approvedText) {
+						approvedHash, approvedText = "", ""
+					}
+					cancelApproval()
 				} else if result.Hash == approvedHash {
 					// Already approved this prompt instance; skip until it disappears
+					rememberApproved(result) // keep visibility evidence aligned with selection/redraws
+					cancelApproval()
 				} else if cfg.Memory.Seen(result.Hash) {
+					cancelApproval()
 					cfg.StatusBar.SetRule("seen: " + result.RuleName)
-					approvedHash = result.Hash
+					rememberApproved(result)
 					sendApproval(result, "seen-approval")
 				} else {
 					if cfg.Log != nil {
@@ -512,8 +561,9 @@ func (p *Proxy) Run() error {
 					}
 					cfg.StatusBar.SetRule(result.RuleName)
 					if delaySecs == 0 {
+						cancelApproval()
 						cfg.Memory.Record(result.Hash)
-						approvedHash = result.Hash
+						rememberApproved(result)
 						sendApproval(result, "immediate-approval")
 					} else if lastResult == nil {
 						// Fresh prompt appearance: start the approval countdown.
@@ -521,13 +571,10 @@ func (p *Proxy) Run() error {
 						approvalTimer = time.NewTimer(time.Duration(delaySecs) * time.Second)
 						timerCh = approvalTimer.C
 						approvalDeadline = time.Now().Add(time.Duration(delaySecs) * time.Second)
-					} else if lastResult.Hash != result.Hash {
-						// Hash drifted (rendering noise from background output or
-						// overlapping dialogs) — update the stored result so the
-						// correct response fires, but do NOT restart the timer.
-						// Restarting on every hash change caused the countdown to
-						// reset indefinitely when a progress table bled into the
-						// dialog body on each screen refresh.
+					} else {
+						// Selection can change the response without changing the
+						// prompt hash. Always refresh it. Keep the original deadline
+						// so noisy body re-renders cannot postpone approval forever.
 						lastResult = result
 					}
 				}
@@ -560,12 +607,24 @@ func (p *Proxy) Run() error {
 			timerCh = nil
 			approvalTimer = nil
 			cfg.StatusBar.SetCountdown(-1)
-			if lastResult != nil {
+			if enabled && lastResult != nil {
+				// A resize or another screen update may invalidate a cached
+				// match. Recompute the action at the point of sending it.
+				currentText := cfg.Screen.Text()
+				current := chain.Detect(currentText)
+				if current == nil && lastResult.RuleName == "fuzzy" && fuzzyEnabled && detector.FuzzyMatch(currentText) {
+					current = &detector.MatchResult{RuleName: "fuzzy", Response: "\r", Hash: detector.HashBody(currentText)}
+				}
+				if current == nil || current.Hash != lastResult.Hash || current.RuleName != lastResult.RuleName {
+					lastResult = nil
+					break
+				}
+				lastResult = current
 				if cfg.Log != nil {
 					cfg.Log.Infof("approval timer fired, sending response for: %s", lastResult.RuleName)
 				}
 				cfg.Memory.Record(lastResult.Hash)
-				approvedHash = lastResult.Hash
+				rememberApproved(lastResult)
 				sendApproval(lastResult, "delayed-approval")
 				lastResult = nil
 			}
@@ -581,11 +640,18 @@ func (p *Proxy) Run() error {
 		case <-afkIdleTimerCh:
 			afkIdleTimerCh = nil
 			afkIdleTimer = nil
-			// Safety guard: AFK is the most dangerous approval path (blind
-			// nudge with no pattern match), so we refuse to fire when the
-			// screen shows a deletion-class command.
+			view := cfg.Screen.Snapshot()
+			question := agentKind.AFKContinuation(view, "")
+			if !afkEnabled || prefixActive || approvalTimer != nil || len(inputCh) > 0 || len(outputCh) > 0 ||
+				question == "" || afkAttempted[question] || chain.Detect(view.Text) != nil {
+				if cfg.Log != nil {
+					cfg.Log.Infof("afk: skipped; no new eligible continuation question")
+				}
+				armAfk()
+				break
+			}
 			if cfg.SafetyEnabled {
-				if hit, snippet := detector.ContainsDangerousCommand(cfg.Screen.Text()); hit {
+				if hit, snippet := detector.ContainsDangerousCommand(view.Text); hit {
 					cfg.StatusBar.SetRule("danger: " + snippet)
 					if cfg.Log != nil {
 						cfg.Log.Errorf("safety: blocked afk nudge — dangerous command on screen: %q", snippet)
@@ -594,28 +660,74 @@ func (p *Proxy) Run() error {
 					break
 				}
 			}
-			if cfg.DryRun {
+			// Record attempts, including failed writes, so missing acknowledgments
+			// never produce repeated text in an unchanged input box.
+			afkAttempted[question] = true
+			if dryRun {
 				if cfg.Log != nil {
-					cfg.Log.Infof("afk: would send y + continue")
+					cfg.Log.Infof("afk: would paste and submit continuation for %s", agentKind)
 				}
-			} else {
-				if _, err := cfg.PTY.Write([]byte("y\r")); err != nil && cfg.Log != nil {
-					cfg.Log.Errorf("afk: failed to send y: %v", err)
-				}
-				// Blocks the select for 200ms once per AFK fire (~1 time per AfkIdle
-				// window). Accepted over a second timer: by construction the loop was
-				// idle when we got here, and buffered channels absorb arrivals.
-				time.Sleep(200 * time.Millisecond)
-				if _, err := cfg.PTY.Write([]byte("continue, Choose based on your project understanding.\r")); err != nil && cfg.Log != nil {
-					cfg.Log.Errorf("afk: failed to send continue: %v", err)
-				}
+				armAfk()
+				break
 			}
-			afkNudgedUntil = time.Now().Add(2 * time.Second)
+			payload := "\x1b[200~" + afkMessage + "\x1b[201~"
+			if n, err := cfg.PTY.Write([]byte(payload)); err != nil || n != len(payload) {
+				if cfg.Log != nil {
+					cfg.Log.Errorf("afk: paste failed (%d/%d bytes): %v", n, len(payload), err)
+				}
+				armAfk()
+				break
+			}
+			afkPending = question
+			afkDeadline = time.Time{}
+			afkLastOutput = time.Now()
+			afkSubmitUntil = time.Now().Add(afkSubmitTimeout)
+			armAfkSubmit(afkSubmitQuiet)
+
+		case <-afkSubmitTimerCh:
+			afkSubmitTimer, afkSubmitTimerCh = nil, nil
+			if time.Now().Before(afkSubmitUntil) {
+				// Let queued activity and paste rendering settle, without blocking
+				// stdin, PTY forwarding, toggles, or other event-loop timers.
+				if len(inputCh) > 0 || len(outputCh) > 0 || time.Since(afkLastOutput) < afkSubmitQuiet {
+					armAfkSubmit(100 * time.Millisecond)
+					break
+				}
+				view := cfg.Screen.Snapshot()
+				if agentKind.AFKContinuation(view, "") == afkPending {
+					armAfkSubmit(100 * time.Millisecond) // no echo yet
+					break
+				}
+				eligible := afkEnabled && agentKind.AFKContinuation(view, afkMessage) == afkPending && chain.Detect(view.Text) == nil
+				if cfg.SafetyEnabled {
+					if hit, _ := detector.ContainsDangerousCommand(view.Text); hit {
+						eligible = false
+					}
+				}
+				if eligible {
+					if n, err := cfg.PTY.Write([]byte("\r")); err == nil && n == 1 {
+						afkNudgedUntil = time.Now().Add(2 * time.Second)
+						if cfg.Log != nil {
+							cfg.Log.Infof("afk: submitted continuation after verified draft echo")
+						}
+					} else if cfg.Log != nil {
+						cfg.Log.Errorf("afk: submit failed (%d bytes): %v", n, err)
+					}
+				} else if cfg.Log != nil {
+					cfg.Log.Infof("afk: submission cancelled; composer changed")
+				}
+			} else if cfg.Log != nil {
+				cfg.Log.Infof("afk: submission cancelled; draft echo timed out")
+			}
+			stopAfkSubmit()
 			armAfk()
 
 		case <-fuzzyStableTimerCh:
 			fuzzyStableTimerCh = nil
 			fuzzyStableTimer = nil
+			if afkPending != "" {
+				break // AFK owns this draft until it is verified or cancelled
+			}
 			// Re-read the current text and run vocab match.
 			currentText := cfg.Screen.Text()
 			// Fuzzy is a fallback: if a specific detector currently matches
@@ -640,11 +752,11 @@ func (p *Proxy) Run() error {
 			}
 			cfg.StatusBar.SetRule(synth.RuleName)
 			if cfg.Memory.Seen(synth.Hash) {
-				approvedHash = synth.Hash
+				rememberApproved(synth)
 				sendApproval(synth, "fuzzy-seen-approval")
 			} else if delaySecs == 0 {
 				cfg.Memory.Record(synth.Hash)
-				approvedHash = synth.Hash
+				rememberApproved(synth)
 				sendApproval(synth, "fuzzy-immediate-approval")
 			} else if lastResult == nil || lastResult.Hash != synth.Hash {
 				if approvalTimer != nil {

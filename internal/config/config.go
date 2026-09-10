@@ -75,7 +75,7 @@ func LoadRequired(path string) (*Config, error) {
 
 func load(path string, required bool) (*Config, error) {
 	cfg := &Config{}
-	cfg.Defaults.Delay = 3
+	cfg.Defaults.Delay = 1
 	cfg.Defaults.Enabled = true
 	cfg.Defaults.LogFile = ExpandTilde("~/.yoyo/yoyo.log")
 

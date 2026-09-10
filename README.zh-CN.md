@@ -10,7 +10,7 @@
 
 yoyo 坐在你的终端和 AI agent CLI（Claude Code、Codex、Cursor 等）之间，监听 agent 的输出，识别权限提示，在可配置的延迟之后自动发送确认按键——你不再需要盯着屏幕敲 `y`。
 
-**为什么需要它**：agent CLI 每条 shell 命令、文件编辑、网络调用都来问你一次"要不要继续"。长时间无人值守跑任务（`yoyo -afk claude`）时，yoyo 帮你自动"yes"识别到的 prompt，同时留 3 秒倒计时让你拦下看起来不对的那条。**删除类命令**（`rm -rf`、`DROP TABLE`、`kubectl delete`、`terraform destroy` 等）**不自动放行**——强制转手动。详见 [删除命令安全防护](#删除命令安全防护) 段。
+**为什么需要它**：agent CLI 每条 shell 命令、文件编辑、网络调用都来问你一次"要不要继续"。长时间无人值守跑任务（`yoyo -afk claude`）时，yoyo 帮你自动"yes"识别到的 prompt，同时留 1 秒倒计时让你拦下看起来不对的那条。**删除类命令**（`rm -rf`、`DROP TABLE`、`kubectl delete`、`terraform destroy` 等）**不自动放行**——强制转手动。详见 [删除命令安全防护](#删除命令安全防护) 段。
 
 ---
 
@@ -79,7 +79,7 @@ sudo mv yoyo /usr/local/bin/
 ### 验证安装
 
 ```bash
-yoyo -v      # 打印已装版本，例如 "yoyo v2.5.3"
+yoyo -v      # 打印已装版本，例如 "yoyo v2.6.0"
 yoyo -h      # 完整用法
 ```
 
@@ -99,7 +99,7 @@ yoyo -h      # 完整用法
 ## 快速开始
 
 ```bash
-# 默认配置（3 秒延迟后自动 approve）包住 claude
+# 默认配置（1 秒延迟后自动 approve）包住 claude
 yoyo claude
 
 # 立刻 approve，不等
@@ -136,12 +136,12 @@ yoyo -delay 5 codex
 ## 状态条
 
 ```
-[yoyo: on 3s]           已启用，3 秒延迟，当前无 prompt
+[yoyo: on 1s]           已启用，1 秒延迟，当前无 prompt
 [yoyo: on 2s | Claude]  检测到 prompt，倒计时中（剩 2 秒）
 [yoyo: on 0s | seen: X] 本会话已批准过同一 prompt，立即发送
 [yoyo: off]             已关闭自动批准（手动模式）
 [yoyo: ^Y …]            正在等 Ctrl+Y 后面的命令键
-[yoyo: dry 3s]          dry-run 模式——只检测不批准
+[yoyo: dry 1s]          dry-run 模式——只检测不批准
 ```
 
 - **绿色** = 自动批准生效
@@ -160,8 +160,10 @@ yoyo 自带**三个内置 detector**覆盖最常见的 AI agent CLI；超出这�
 | Agent | 命令 | 识别依据 |
 |-------|------|---------|
 | [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview) | `claude` | `───` 包围的权限框 + 编号式 `Yes` / `No` 选项 |
-| [OpenAI Codex CLI](https://github.com/openai/codex) | `codex` | "Would you like to" / "needs your approval" 开头 + "Press enter to confirm or esc to cancel" 结尾 |
+| [OpenAI Codex CLI](https://github.com/openai/codex) | `codex` | 审批标题 + 完整编号的批准/拒绝选项 + 唯一选择标记 + 确认/取消页脚；支持命令、网络、终端输入、文件编辑、权限和 MCP 审批 |
 | [Cursor Agent](https://cursor.com/agents) | `cursor`、`cursor-agent`、`agent` | `┌─┐` 画框 + `(y)` / `n)` 选项（兼容老式"全部在框内"和新式"命令在框内、选项在框外下方"两种布局）。裸 `agent` 没写进命令级识别（太通用，会和 `ssh-agent` 等冲突）——yoyo 会在前 10 帧输出里根据 Cursor 的 banner 自动识别。 |
+
+Codex 审批选择已识别的单次批准选项：该项已选中且页脚注明 Enter 确认时发送 Enter，否则使用该选项显示的单字母快捷键。支持菜单文本换行；不完整菜单、普通问题、无法识别或有歧义的选项等待手动输入。自定义 regex 规则及可选 fuzzy/AFK 兜底仍按各自规则工作。
 
 `yoyo claude` / `yoyo codex` / `yoyo cursor` 会自动根据命令名选 detector。如果你是经包装脚本启动（或命令名不匹配），yoyo 会在前 10 帧输出里根据 banner 文本自动识别——所以 `yoyo my-claude-wrapper.sh` 也能跑。
 
@@ -171,9 +173,9 @@ yoyo 自带**三个内置 detector**覆盖最常见的 AI agent CLI；超出这�
 
 1. **自定义 regex 规则**（在 `~/.config/yoyo/config.toml` 里写 `[[rules]]`，包含 `pattern` 和 `response`，优先于内置 detector 评估）。适用于 prompt 形状固定但上游没收录的 agent，如 aider、goose、mentat、gemini-cli、devin、OpenHands、sweep 等。详见下面的 [配置文件](#配置文件)。
 2. **Fuzzy 保底**（`-fuzzy`）——窄词表 y/n 检测，屏幕稳定 + 出现 `(y/n)` / `[Y/n]` / `yes/no` 这类明确标记时触发。对任意 agent 只要 prompt 里出现这些标记就能识别，不需要了解 agent 细节。
-3. **AFK 模式**（`-afk`）——无脑空闲计时。终端 `-afk-idle`（默认 10 分钟）完全静默后，yoyo 发 `y` + Enter + 一段通用"继续"指令。长时间无人值守跑任务时的最后一道逃生门。
+3. **AFK 模式**（`-afk`）——终端 `-afk-idle`（默认 10 分钟）无输入输出后，只有识别到 Codex/Claude 的空闲输入框和明确的继续询问，才发送一次继续指令。未知界面、审批、草稿、忙碌状态和已完成的回答会跳过。
 
-三层可以随意叠加：`yoyo -fuzzy -afk -afk-idle 5m my-agent` 能做到——自定义规则优先（如果配了），几秒内 fuzzy 兜一遍，10 分钟 AFK 再兜底。
+自定义规则和 fuzzy 可用于其他工具；AFK 当前仅支持已识别的 Codex、Claude 输入界面，不会盲目回答未识别的提示。
 
 ---
 
@@ -187,7 +189,7 @@ yoyo [flags] <command> [args...]
 
 | Flag | 默认 | 说明 |
 |------|------|------|
-| `-delay int` | `3`（来自 config） | 自动批准前等待的秒数。`0` = 立即；`-1` = 读取 config 值。显式传入总是优先于 per-agent 配置。 |
+| `-delay int` | `1`（来自 config） | 自动批准前等待的秒数。`0` = 立即；`-1` = 读取 config 值。显式传入总是优先于 per-agent 配置。 |
 | `-config string` | `~/.config/yoyo/config.toml` | TOML 配置文件路径，支持 `~/`。 |
 | `-log string` | `~/.yoyo/yoyo.log` | 日志文件路径，支持 `~/`。 |
 | `-dry-run` | off | 只检测不发送 approval 按键。状态条显示 `dry` 而不是 `on`，用来测试自定义规则。 |
@@ -231,13 +233,19 @@ yoyo [flags] <command> [args...]
 
 ### AFK 模式
 
-有些 agent 的 prompt 不在 yoyo 的 detector 词表里，agent 会永远卡在 `read()` 等输入。`-afk` 是一个"无脑"空闲定时器，在静默一段时间后去戳 agent：
+AFK 是默认关闭的继续执行辅助功能。静默达到设定时间后，检查 Codex 或 Claude 是否正通过空闲输入框明确询问要不要继续：
 
 ```
 yoyo -afk -afk-idle 10m claude
 ```
 
-只要终端在配置的窗口内**既没输出也没输入**，yoyo 就先发 `y` + Enter，短暂停顿，再发 `continue, Choose based on your project understanding.` + Enter，然后重新起计时窗口。运行时用 `Ctrl+Y a` 切换开关。
+触发需要同时满足：设定时间内**既没输出也没输入**、可见光标位于空输入框、存在已识别的快捷键页脚、最后一条助手消息以简单继续询问结尾，例如 `Should I continue?` 或 `需要我继续吗？`。审批菜单、选择题、忙碌状态、已有草稿、引用/代码示例、已完成的回答及未知界面会跳过；自定义状态栏、改绑按键或其他问法可能需要人工处理。
+
+yoyo 先通过 bracketed paste 填入 `Continue the current task within the existing instructions.`，确认同一输入框回显了完整文本，且至少 300 毫秒没有输出后，再单独按 Enter。期间有人工输入、关闭 AFK、界面改变、命中删除命令防护、写入失败，或 2 秒内未确认回显，就取消提交。已填入的草稿留给用户检查，不会自动删除。
+
+同一助手问题的哈希在每个会话中最多尝试一次，失败也不重复发送；问题或上下文变化后可再次触发。AFK 与自动批准开关独立，遵守 `-dry-run`，运行时用 `Ctrl+Y a` 切换。
+
+Codex 布局依据本地上游源码；Claude 空闲布局使用构造测试覆盖。目前不代表所有已安装 CLI 版本都已实测，也无法据此直接得知 agent 内部的执行状态。
 
 ### 删除命令安全防护
 
@@ -265,7 +273,7 @@ yoyo -afk -afk-idle 10m claude
 yoyo -fuzzy claude
 ```
 
-Fuzzy 命中后走标准 approval 流程，所以 `-delay` 和 memory 去重照常起效。运行时用 `Ctrl+Y f` 切换。推荐和 `-afk` 同时开：fuzzy 在几秒内兜住可识别的 y/n 卡死，AFK 在更长的 idle 窗口之后兜住其他所有情况。
+Fuzzy 命中后走标准 approval 流程，所以 `-delay` 和 memory 去重照常起效。运行时用 `Ctrl+Y f` 切换。可同时启用 AFK，但 AFK 仅在空闲窗口后处理已识别的继续询问，不覆盖所有未匹配交互。
 
 ---
 
@@ -275,7 +283,7 @@ Fuzzy 命中后走标准 approval 流程，所以 `-delay` 和 memory 去重照�
 
 ```toml
 [defaults]
-delay        = 3              # 批准延迟秒数（0 = 立即）
+delay        = 1              # 批准延迟秒数（0 = 立即）
 enabled      = true           # 启动时就开自动批准
 afk          = false          # 启用 AFK 空闲戳
 afk_idle     = "10m"          # AFK idle 阈值
@@ -423,7 +431,7 @@ ps -eo pid,lstart,command | grep '[y]oyo'
 |---|---|---|
 | **删除命令防护**（默认开） | 屏幕上出现删除类命令（`rm -rf`、`git rm -r`、`git clean -f…`、`find -delete`、SQL 的 `DROP`/`TRUNCATE`、`kubectl delete`、`terraform destroy`、`docker/podman volume rm` / `system prune`）时拒绝自动批准，状态条变成 `danger: <片段>`。详见 [删除命令安全防护](#删除命令安全防护)。 | `-no-safety` |
 | **Config 文件权限检查** | 启动时如果 `~/.config/yoyo/config.toml` 可被 group 或 other 写入，stderr 发警告——可写的 config 意味着攻击者能塞 `pattern=".*" response="y\r"` 这种全通规则批准任何东西。 | `chmod 600 ~/.config/yoyo/config.toml`（消除警告） |
-| **批准延迟** | 默认 3 秒倒计时，期间按任意非 escape 键都能取消自动批准，留给你人眼检视。 | `-delay 0` |
+| **批准延迟** | 默认 1 秒倒计时，期间按任意非 escape 键都能取消自动批准，留给你人眼检视。 | `-delay 0` |
 | **强杀逃生口** | `Ctrl+Y q` 或 500ms-1s 内连按 3 次 `Ctrl-C` → SIGKILL 子进程。针对 agent 自己把 Ctrl-C 处理卡死的情况。 | 总是开启 |
 | **会话去重** | 同一会话内相同 prompt 不会重复走 delay——"看过一次就算看过"的语义。 | 只在进程内，不跨会话持久化 |
 

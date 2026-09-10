@@ -46,9 +46,12 @@ func newTmuxH(t *testing.T, cols, rows int) *tmuxH {
 		socket:  filepath.Join(t.TempDir(), "tmux.sock"),
 		session: "yoyo",
 	}
-	out, err := exec.Command("tmux", "-S", h.socket,
+	// Do not load user tmux/login-shell configuration: interactive startup
+	// hooks can outlive the assertion timeout while only echoing queued input.
+	out, err := exec.Command("tmux", "-f", "/dev/null", "-S", h.socket,
 		"new-session", "-d", "-s", h.session,
-		"-x", fmt.Sprint(cols), "-y", fmt.Sprint(rows)).CombinedOutput()
+		"-x", fmt.Sprint(cols), "-y", fmt.Sprint(rows),
+		"/usr/bin/env", "-u", "ENV", "-u", "BASH_ENV", "/bin/sh").CombinedOutput()
 	if err != nil {
 		t.Skipf("tmux new-session: %v — %s", err, out)
 	}
@@ -321,8 +324,9 @@ echo "APPROVED" > %s
 	// Dedicated tmux socket + session.
 	sock := filepath.Join(t.TempDir(), "tmux-live.sock")
 	sess := "live"
-	if out, err := exec.Command("tmux", "-S", sock,
-		"new-session", "-d", "-s", sess, "-x", "120", "-y", "40").CombinedOutput(); err != nil {
+	if out, err := exec.Command("tmux", "-f", "/dev/null", "-S", sock,
+		"new-session", "-d", "-s", sess, "-x", "120", "-y", "40",
+		"/usr/bin/env", "-u", "ENV", "-u", "BASH_ENV", "/bin/sh").CombinedOutput(); err != nil {
 		t.Skipf("tmux new-session: %v — %s", err, out)
 	}
 	t.Cleanup(func() { exec.Command("tmux", "-S", sock, "kill-server").Run() })

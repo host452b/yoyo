@@ -4,6 +4,41 @@ All notable changes to yoyo are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] — 2026-09-10
+
+### Changed
+
+- Reduce the default approval countdown from 3 seconds to 1 second. Explicit
+  configuration values and command-line overrides continue to take priority.
+- Make AFK continuation conditional on a recognized Codex/Claude empty composer
+  and an explicit continuation question. Replace blind `y` and repeated nudges
+  with one paste attempt per question and a separately verified Enter; cancel
+  submission on user input, changed state, missing echo, or write failure.
+
+### Fixed
+
+- Match complete Codex approval menus, including network approvals and wrapped
+  footers. Select a known single-request approval using the current selection
+  and visible shortcut; abstain on partial menus and unrelated questions.
+- Preserve UTF-8 characters split across PTY reads, including selection markers
+  and box borders used by all built-in detectors.
+- Refresh approval keystrokes when selection changes during a countdown,
+  revalidate delayed matches after screen changes, and cancel obsolete timers.
+- Suppress duplicate Codex approvals across fragmented/redrawn footers, and
+  respect visible Enter bindings that cancel or reject before list selection.
+
+### Tests
+
+- Isolate tmux tests from personal tmux and shell startup configuration so
+  fixture commands do not time out while login hooks are still running.
+- Cover AFK readiness, draft echo, busy/unknown screens, cancellation, per-question
+  deduplication, and failed/partial PTY writes using terminal-rendered fixtures.
+- Add seven Codex source snapshot fixtures replayed at three terminal widths
+  with byte-by-byte ANSI/UTF-8 input, structural negative cases, and shared
+  proxy countdown regressions.
+- Add cross-agent stream equivalence checks, request reappearance/redraw cases,
+  and an isolated baseline comparison script with per-case JSON/Markdown reports.
+
 ## [2.5.3] — 2026-08-26
 
 ### Fixed

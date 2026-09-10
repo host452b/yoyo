@@ -1,0 +1,8 @@
+  Would you like to send input to terminal 42?
+
+  Input: "confirm\n"
+
+› 1. Yes, proceed (y)
+  2. No, and tell Codex what to do differently (esc)
+
+  Press enter to confirm or esc to cancel

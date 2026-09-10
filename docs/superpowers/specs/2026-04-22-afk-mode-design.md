@@ -3,6 +3,10 @@
 Status: draft
 Date: 2026-04-22
 
+AFK behavior in this historical design is superseded by
+[AFK continuation guard](2026-09-10-afk-state-aware-design.md). The fuzzy section
+below remains a separate design; AFK no longer sends blind `y` nudges.
+
 ## Purpose
 
 Some AI agent CLIs display custom y/n or confirmation prompts that yoyo's
