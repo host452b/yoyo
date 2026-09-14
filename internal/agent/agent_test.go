@@ -2,11 +2,33 @@
 package agent_test
 
 import (
+	"os"
 	"testing"
 
 	"github.com/host452b/yoyo/internal/agent"
 	"github.com/host452b/yoyo/internal/detector"
 )
+
+func TestKind_Detector_CodexRetryMenus(t *testing.T) {
+	var previousHash string
+	for _, fixture := range []string{"prompt", "confirmation"} {
+		data, err := os.ReadFile("../detector/testdata/codex/retry/" + fixture + ".txt")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, kind := range []agent.Kind{agent.KindCodex, agent.KindUnknown} {
+			r := kind.Detector().Detect(string(data))
+			if r == nil || r.RuleName != "Codex" || r.Response != "1" {
+				t.Fatalf("%v did not select first option for %s: %+v", kind, fixture, r)
+			}
+		}
+		r := agent.KindCodex.Detector().Detect(string(data))
+		if r.Hash == previousHash {
+			t.Fatal("retry confirmation must not be deduplicated as the initial prompt")
+		}
+		previousHash = r.Hash
+	}
+}
 
 func TestKindFromCommand(t *testing.T) {
 	tests := []struct {

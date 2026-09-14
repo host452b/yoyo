@@ -7,6 +7,7 @@ package proxy_test
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -243,6 +244,38 @@ func TestProxy_E2E_FragmentedCodexApproval(t *testing.T) {
 				t.Fatalf("fragmented footer produced extra keystrokes: %q", got)
 			}
 		})
+	}
+}
+
+func TestProxy_E2E_CodexRetryFooterRedraw(t *testing.T) {
+	data, err := os.ReadFile("../detector/testdata/codex/retry/prompt.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prompt := strings.ReplaceAll(string(data), "\n", "\r\n")
+	pr, _, pty, stdin := makeProxy(t, agent.KindCodex, 0, true, nil)
+	done := runProxy(pr)
+	defer func() { pty.close(); stdin.close(); <-done }()
+	pty.send(prompt)
+	waitWritten(t, pty, "1", time.Second)
+
+	// At 80 columns the footer starts on row 9. Redraw it in separate
+	// PTY chunks, leaving the title and all three options visible.
+	pty.send("\x1b[9;1H\x1b[JNo action")
+	time.Sleep(100 * time.Millisecond)
+	pty.send("\x1b[9;1H\x1b[JNo action is required. Codex will keep waiting, and this menu will close when the response is ready.")
+	time.Sleep(100 * time.Millisecond)
+	if got := pty.written(); got != "1" {
+		t.Fatalf("footer redraw produced duplicate keystrokes: %q", got)
+	}
+
+	// A genuinely new appearance must still be handled, even though this
+	// static template has the same hash as the previous appearance.
+	pty.send("\x1b[2J\x1b[HWorking...")
+	pty.send("\x1b[2J\x1b[H" + prompt)
+	waitWritten(t, pty, "11", time.Second)
+	if got := pty.written(); got != "11" {
+		t.Fatalf("reappearing retry response: %q", got)
 	}
 }
 
