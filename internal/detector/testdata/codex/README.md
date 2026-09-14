@@ -4,6 +4,14 @@ Visible rows extracted from local Codex commit `ddea03ad049142943bdbf13e937b1d67
 Upstream: https://github.com/openai/codex (Apache-2.0). Only right padding and snapshot metadata were removed.
 Tests do not require the Codex checkout.
 
+Retry dialogs under `retry/` cover the two user-reported templates (`prompt.txt`
+and `confirmation.txt`, with GPT-5.6-Luna) and the upstream narrow confirmation
+snapshot (`confirmation-narrow.txt`). The latter comes from
+`chatwidget/snapshots/codex_tui__chatwidget__tests__safety_buffering_retry_confirmation_narrow.snap`
+at the same commit. Rendering and numeric shortcut behavior were checked in
+`chatwidget/safety_buffering.rs` and `bottom_pane/list_selection_view.rs`.
+Both dialogs select option 1: "Retry with a faster model" followed by "Keep waiting".
+
 The upstream Apache-2.0 license is included in [LICENSE](LICENSE).
 
 | Fixture | Upstream source under `codex-rs/tui/src/` |

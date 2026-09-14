@@ -67,6 +67,65 @@ func TestCodex_NoMatch(t *testing.T) {
 	}
 }
 
+func TestCodex_RetryMenus(t *testing.T) {
+	paths, err := filepath.Glob("testdata/codex/retry/*.txt")
+	if err != nil || len(paths) != 3 {
+		t.Fatalf("expected 3 retry fixtures: %v, %v", paths, err)
+	}
+	for _, path := range paths {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			prompt := string(data)
+			base := (detector.Codex{}).Detect(prompt)
+			if base == nil || base.RuleName != "Codex" || base.Response != "1" || base.PromptText == "" {
+				t.Fatalf("expected first-option shortcut: %+v", base)
+			}
+			for _, cols := range []int{40, 60, 80, 120} {
+				t.Run(fmt.Sprint(cols), func(t *testing.T) {
+					scr := screen.New(cols, 60)
+					for _, b := range []byte("\x1b[2J\x1b[H\x1b[1m" + strings.ReplaceAll(prompt, "\n", "\r\n") + "\x1b[0m") {
+						scr.Feed([]byte{b})
+					}
+					r := (detector.Codex{}).Detect(scr.Text())
+					if r == nil || r.Response != "1" || r.Hash != base.Hash {
+						t.Fatalf("wrong wrapped-menu match: %+v\n%s", r, scr.Text())
+					}
+				})
+			}
+			for _, number := range []string{"2", "3"} {
+				if !strings.Contains(prompt, "  "+number+". ") {
+					continue
+				}
+				moved := strings.ReplaceAll(strings.ReplaceAll(prompt, "› 1.", "  1."), "  "+number+".", "› "+number+".")
+				r := (detector.Codex{}).Detect(moved)
+				if r == nil || r.Response != "1" || r.Hash != base.Hash {
+					t.Fatalf("must select first regardless of cursor: %+v", r)
+				}
+			}
+			for name, text := range map[string]string{
+				"missing cursor":   strings.ReplaceAll(prompt, "›", " "),
+				"two cursors":      strings.ReplaceAll(prompt, "  2.", "› 2."),
+				"number gap":       strings.ReplaceAll(prompt, "2.", "4."),
+				"missing last row": strings.TrimSpace(prompt)[:strings.LastIndex(strings.TrimSpace(prompt), "\n")],
+				"stale menu":       prompt + "\nWorking...",
+				"new partial menu": prompt + "\nStop this attempt and retry?\n",
+				"quoted menu":      "```text\n" + prompt + "\n```",
+				"changed option":   strings.ReplaceAll(prompt, "1. ", "1. Unexpected "),
+				"missing title":    prompt[strings.Index(prompt, "\n")+1:],
+			} {
+				t.Run(name, func(t *testing.T) {
+					if r := (detector.Codex{}).Detect(text); r != nil {
+						t.Fatalf("unexpected match: %+v", r)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestCodex_NoFooter(t *testing.T) {
 	d := detector.Codex{}
 	if d.Detect("Would you like to run the following command?") != nil {

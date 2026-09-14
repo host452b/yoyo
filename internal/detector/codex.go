@@ -10,6 +10,10 @@ var (
 	codexTitle      = regexp.MustCompile(`^(Would you like to (run the following command|make the following edits|grant these permissions|send input to (the existing terminal|terminal [^?]+))\?|Do you want to approve network access to ".+"\?|.+ needs your approval\.?)$`)
 	codexOptionLine = regexp.MustCompile(`^(›\s*)?([1-9][0-9]*)\.\s+(.+)$`)
 	codexShortcut   = regexp.MustCompile(`^(.*) \(([^()]*)\)$`)
+
+	codexRetryConfirmationBody    = regexp.MustCompile(`^Stopthisattemptandretry\?Thiswillstopthecurrentattemptandretryinanewthread\.Anyfilechangesorotheractionsalreadytakenwillremain\.Yourmessagewillbesentagainusing[^,›]+,whichmaybelesscapableoncomplextasks\.$`)
+	codexRetryChoices             = regexp.MustCompile(`^(›?)1\.Retrywithafastermodel(›?)2\.Dismissandkeepwaiting(›?)3\.LearnmoreNoactionisrequired\.Codexwillkeepwaiting,andthismenuwillclosewhentheresponseisready\.$`)
+	codexRetryConfirmationChoices = regexp.MustCompile(`^(›?)1\.Keepwaiting(›?)2\.Stopandretry$`)
 	// Footer spaces carry no command semantics. Ignore them to also recognize
 	// a terminal hard-wrap in the middle of "cancel" or "thread".
 	codexFooterLine = regexp.MustCompile(`^Press(?:(.+?)toconfirmor(.+?)tocancel|(.+?)tocancel)(?:or(.+?)toopenthread)?$`)
@@ -21,9 +25,9 @@ type codexOption struct {
 	selected bool
 }
 
-// Codex recognizes complete approval menus, not arbitrary questions. A known
-// single-request approval must be visible; session/persistent grants are never
-// substituted for it. See testdata/codex for the upstream rendering contract.
+// Codex recognizes complete approval and retry menus, not arbitrary questions.
+// Approvals require a known single-request option; session/persistent grants
+// are never substituted for it. See testdata/codex for the rendering contract.
 type Codex struct{}
 
 func (Codex) Detect(screenText string) *MatchResult {
@@ -31,6 +35,9 @@ func (Codex) Detect(screenText string) *MatchResult {
 	lines := append([]string(nil), rawLines...)
 	for i := range lines {
 		lines[i] = strings.TrimSpace(lines[i])
+	}
+	if retry := detectCodexRetryMenu(rawLines, lines); retry != nil {
+		return retry
 	}
 
 	// The footer must end the visible content. This rejects historical menus
@@ -172,4 +179,67 @@ func (Codex) Detect(screenText string) *MatchResult {
 		RuleName: "Codex", Response: response, Hash: hashBody(strings.Join(body, "\n")),
 		PromptText: strings.Join(rawLines[startIdx:footerIdx], "\n"),
 	}
+}
+
+// Retry dialogs use selection lists without the approval footer. Match their
+// complete body and exact choices at the end of the screen, including the
+// informational footer when present. Whitespace is not semantic in these menus;
+// removing it handles both word wrapping and terminal wraps within a word.
+func detectCodexRetryMenu(rawLines, lines []string) *MatchResult {
+	menuIdx := -1
+	for i := len(lines) - 1; i >= 0; i-- {
+		if m := codexOptionLine.FindStringSubmatch(lines[i]); m != nil && m[2] == "1" {
+			menuIdx = i
+			break
+		}
+	}
+	if menuIdx < 0 {
+		return nil
+	}
+	compact := func(rows []string) string {
+		return strings.Join(strings.Fields(strings.Join(rows, "")), "")
+	}
+	choices := compact(lines[menuIdx:])
+	for start := menuIdx - 1; start >= 0; start-- {
+		if lines[start] == "" {
+			continue
+		}
+		var selections []string
+		switch body := compact(lines[start:menuIdx]); {
+		case body == "GivingthisrequestalittleextrathoughtIfyou'drathernotwait,retrywithafastermodel.Itmaybelesscapableofhandlingcomplexrequests.":
+			selections = codexRetryChoices.FindStringSubmatch(choices)
+		case codexRetryConfirmationBody.MatchString(body):
+			selections = codexRetryConfirmationChoices.FindStringSubmatch(choices)
+		}
+		if selections == nil {
+			continue
+		}
+		selected := 0
+		for _, marker := range selections[1:] {
+			if marker != "" {
+				selected++
+			}
+		}
+		if selected != 1 {
+			return nil
+		}
+		// Keep visibility evidence through the last option row, excluding the
+		// informational footer. A partial footer redraw must not clear the
+		// proxy's duplicate-send suppression while the menu is still visible.
+		bodyEnd := menuIdx + 1
+		for i := menuIdx + 1; i < len(lines); i++ {
+			if codexOptionLine.MatchString(lines[i]) {
+				bodyEnd = i + 1
+			}
+		}
+		// ListSelectionView's numeric shortcut selects and accepts option 1
+		// directly for both dialogs. Do not append Enter: it could act on the
+		// confirmation dialog opened by the first menu.
+		body := compact(lines[start:menuIdx]) + strings.ReplaceAll(choices, "›", "")
+		return &MatchResult{
+			RuleName: "Codex", Response: "1", Hash: hashBody(body),
+			PromptText: strings.TrimSpace(strings.Join(rawLines[start:bodyEnd], "\n")),
+		}
+	}
+	return nil
 }
