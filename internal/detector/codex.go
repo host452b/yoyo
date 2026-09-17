@@ -14,6 +14,7 @@ var (
 	codexRetryConfirmationBody    = regexp.MustCompile(`^Stopthisattemptandretry\?Thiswillstopthecurrentattemptandretryinanewthread\.Anyfilechangesorotheractionsalreadytakenwillremain\.Yourmessagewillbesentagainusing[^,›]+,whichmaybelesscapableoncomplextasks\.$`)
 	codexRetryChoices             = regexp.MustCompile(`^(›?)1\.Retrywithafastermodel(›?)2\.Dismissandkeepwaiting(›?)3\.LearnmoreNoactionisrequired\.Codexwillkeepwaiting,andthismenuwillclosewhentheresponseisready\.$`)
 	codexRetryConfirmationChoices = regexp.MustCompile(`^(›?)1\.Keepwaiting(›?)2\.Stopandretry$`)
+	codexWaitChoices              = regexp.MustCompile(`^(›?)1\.Dismissandkeepwaiting(›?)2\.Learnmore$`)
 	// Footer spaces carry no command semantics. Ignore them to also recognize
 	// a terminal hard-wrap in the middle of "cancel" or "thread".
 	codexFooterLine = regexp.MustCompile(`^Press(?:(.+?)toconfirmor(.+?)tocancel|(.+?)tocancel)(?:or(.+?)toopenthread)?$`)
@@ -205,7 +206,13 @@ func detectCodexRetryMenu(rawLines, lines []string) *MatchResult {
 			continue
 		}
 		var selections []string
+		hashChoices := choices
 		switch body := compact(lines[start:menuIdx]); {
+		case body == "Givingthisrequestalittleextrathought":
+			// The waiting-only menu may omit its informational footer. Keep
+			// its identity stable when that footer arrives or disappears.
+			hashChoices = strings.TrimSuffix(choices, "Noactionisrequired.Codexwillkeepwaiting,andthismenuwillclosewhentheresponseisready.")
+			selections = codexWaitChoices.FindStringSubmatch(hashChoices)
 		case body == "GivingthisrequestalittleextrathoughtIfyou'drathernotwait,retrywithafastermodel.Itmaybelesscapableofhandlingcomplexrequests.":
 			selections = codexRetryChoices.FindStringSubmatch(choices)
 		case codexRetryConfirmationBody.MatchString(body):
@@ -233,9 +240,9 @@ func detectCodexRetryMenu(rawLines, lines []string) *MatchResult {
 			}
 		}
 		// ListSelectionView's numeric shortcut selects and accepts option 1
-		// directly for both dialogs. Do not append Enter: it could act on the
+		// directly for these dialogs. Do not append Enter: it could act on the
 		// confirmation dialog opened by the first menu.
-		body := compact(lines[start:menuIdx]) + strings.ReplaceAll(choices, "›", "")
+		body := compact(lines[start:menuIdx]) + strings.ReplaceAll(hashChoices, "›", "")
 		return &MatchResult{
 			RuleName: "Codex", Response: "1", Hash: hashBody(body),
 			PromptText: strings.TrimSpace(strings.Join(rawLines[start:bodyEnd], "\n")),

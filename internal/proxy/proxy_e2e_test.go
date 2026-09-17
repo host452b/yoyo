@@ -279,6 +279,44 @@ func TestProxy_E2E_CodexRetryFooterRedraw(t *testing.T) {
 	}
 }
 
+func TestProxy_E2E_CodexWaitMenu(t *testing.T) {
+	data, err := os.ReadFile("../detector/testdata/codex/retry/wait.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prompt := strings.ReplaceAll(string(data), "\n", "\r\n")
+	pr, _, pty, stdin := makeProxy(t, agent.KindCodex, 0, true, nil)
+	done := runProxy(pr)
+	defer func() { pty.close(); stdin.close(); <-done }()
+
+	// Wait for both options before responding to a fragmented menu.
+	body, last, _ := strings.Cut(prompt, "  2.")
+	pty.send(body)
+	ensureNotWritten(t, pty, "1", 100*time.Millisecond)
+	pty.send("  2." + last)
+	waitWritten(t, pty, "1", time.Second)
+
+	// The optional footer may arrive later or redraw in separate chunks.
+	for _, footer := range []string{
+		"No action",
+		"No action is required. Codex will keep waiting, and this menu will close when the response is ready.",
+		"",
+	} {
+		pty.send("\x1b[6;1H\x1b[J" + footer)
+		time.Sleep(100 * time.Millisecond)
+		if got := pty.written(); got != "1" {
+			t.Fatalf("footer update produced extra keystrokes: %q", got)
+		}
+	}
+
+	pty.send("\x1b[2J\x1b[HWorking...")
+	pty.send("\x1b[2J\x1b[H" + prompt)
+	waitWritten(t, pty, "11", time.Second)
+	if got := pty.written(); got != "11" {
+		t.Fatalf("reappearing wait menu response: %q", got)
+	}
+}
+
 func TestProxy_E2E_CodexReappearance(t *testing.T) {
 	pr, _, pty, stdin := makeProxy(t, agent.KindCodex, 0, true, nil)
 	done := runProxy(pr)

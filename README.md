@@ -88,7 +88,7 @@ sudo mv yoyo /usr/local/bin/
 ### Verify
 
 ```bash
-yoyo -v      # prints the installed version, e.g. "yoyo v2.6.0"
+yoyo -v      # prints the installed version, e.g. "yoyo v2.6.1"
 yoyo -h      # full usage
 ```
 

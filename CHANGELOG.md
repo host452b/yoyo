@@ -4,6 +4,25 @@ All notable changes to yoyo are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.1] — 2026-09-17
+
+### Fixed
+
+- Recognize Codex's "Giving this request a little extra thought" waiting-only
+  menu and select "1. Dismiss and keep waiting" with the numeric shortcut `1`,
+  without sending Enter. Support menus with or without the informational footer.
+- Keep the waiting-only menu's identity stable when its footer arrives, redraws,
+  or disappears, preventing duplicate responses.
+- Recognize Codex retry and retry-confirmation menus and select their first
+  option; suppress duplicate responses when the retry footer redraws.
+
+### Tests
+
+- Cover waiting-only menus at 40/60/80/120 columns, cursor movement, incomplete
+  and stale menus, and Codex/unknown-agent routing.
+- Verify fragmented menu output, optional footer updates, and a fresh response
+  after a waiting-only menu disappears and reappears.
+
 ## [2.6.0] — 2026-09-10
 
 ### Changed

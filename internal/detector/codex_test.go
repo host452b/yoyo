@@ -69,8 +69,8 @@ func TestCodex_NoMatch(t *testing.T) {
 
 func TestCodex_RetryMenus(t *testing.T) {
 	paths, err := filepath.Glob("testdata/codex/retry/*.txt")
-	if err != nil || len(paths) != 3 {
-		t.Fatalf("expected 3 retry fixtures: %v, %v", paths, err)
+	if err != nil || len(paths) != 5 {
+		t.Fatalf("expected 5 retry fixtures: %v, %v", paths, err)
 	}
 	for _, path := range paths {
 		t.Run(filepath.Base(path), func(t *testing.T) {
@@ -123,6 +123,24 @@ func TestCodex_RetryMenus(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+func TestCodex_WaitMenuFooterIdentity(t *testing.T) {
+	var base *detector.MatchResult
+	for _, fixture := range []string{"wait", "wait-footer"} {
+		data, err := os.ReadFile("testdata/codex/retry/" + fixture + ".txt")
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := (detector.Codex{}).Detect(string(data))
+		if r == nil {
+			t.Fatalf("expected wait menu detection for %s", fixture)
+		}
+		if base != nil && (r.Hash != base.Hash || r.PromptText != base.PromptText) {
+			t.Fatalf("informational footer changed menu identity: %+v vs %+v", base, r)
+		}
+		base = r
 	}
 }
 
