@@ -11,7 +11,7 @@ import (
 
 func TestKind_Detector_CodexRetryMenus(t *testing.T) {
 	var previousHash string
-	for _, fixture := range []string{"prompt", "confirmation"} {
+	for _, fixture := range []string{"prompt", "confirmation", "wait"} {
 		data, err := os.ReadFile("../detector/testdata/codex/retry/" + fixture + ".txt")
 		if err != nil {
 			t.Fatal(err)
@@ -24,7 +24,7 @@ func TestKind_Detector_CodexRetryMenus(t *testing.T) {
 		}
 		r := agent.KindCodex.Detector().Detect(string(data))
 		if r.Hash == previousHash {
-			t.Fatal("retry confirmation must not be deduplicated as the initial prompt")
+			t.Fatal("different menus must not be deduplicated as the same prompt")
 		}
 		previousHash = r.Hash
 	}

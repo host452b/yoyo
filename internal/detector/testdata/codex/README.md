@@ -12,6 +12,13 @@ at the same commit. Rendering and numeric shortcut behavior were checked in
 `chatwidget/safety_buffering.rs` and `bottom_pane/list_selection_view.rs`.
 Both dialogs select option 1: "Retry with a faster model" followed by "Keep waiting".
 
+The waiting-only menu (`wait.txt`) selects option 1, "Dismiss and keep waiting".
+`wait-footer.txt` includes the informational footer from the upstream
+`chatwidget/snapshots/codex_tui__chatwidget__tests__safety_buffering_status_without_retry.snap`
+at the same commit; `wait.txt` covers the user-reported menu without that footer.
+Both forms send only the numeric shortcut `1`, without Enter, and share the same
+menu identity so footer updates do not trigger another response.
+
 The upstream Apache-2.0 license is included in [LICENSE](LICENSE).
 
 | Fixture | Upstream source under `codex-rs/tui/src/` |
