@@ -189,6 +189,7 @@ yoyo [flags] <command> [args...]
 
 | Flag | 默认 | 说明 |
 |------|------|------|
+| `-h`、`--help` | | 查看功能、参数和快捷键帮助后退出，无需指定 agent 命令。 |
 | `-delay int` | `1`（来自 config） | 自动批准前等待的秒数。`0` = 立即；`-1` = 读取 config 值。显式传入总是优先于 per-agent 配置。 |
 | `-config string` | `~/.config/yoyo/config.toml` | TOML 配置文件路径，支持 `~/`。 |
 | `-log string` | `~/.yoyo/yoyo.log` | 日志文件路径，支持 `~/`。 |
@@ -199,7 +200,7 @@ yoyo [flags] <command> [args...]
 
 ### 运行时控制
 
-前缀键是 **Ctrl+Y**。先按 Ctrl+Y，再按：
+前缀键是 **Ctrl+Y**。先按 Ctrl+Y，松开两个键，再在 **1.5 秒内**按下后一个键：
 
 | 键 | 动作 |
 |-----|------|
@@ -209,6 +210,8 @@ yoyo [flags] <command> [args...]
 | `f` | 切换 fuzzy 保底检测 开/关 |
 | `q` | 强制杀掉子进程（agent 卡死时的逃生门） |
 | `d` | 写一份诊断 dump 到 `~/.yoyo/dumps/`（详见 [诊断 dump](#诊断-dump)） |
+
+`Ctrl+Y 0` 是自动批准开关，不是把延迟设为 0 秒。需要立即批准时，用 `yoyo -delay 0 <command>` 启动。运行时调整仅对当前 yoyo 进程生效，不会修改配置文件。
 
 **取消当前倒计时**：倒计时期间按任意非 escape 键即可。
 

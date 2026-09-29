@@ -30,6 +30,29 @@ const usageText = `yoyo — you only yes once. A PTY proxy that auto-approves AI
 
 USAGE
   yoyo [flags] <command> [args...]
+  yoyo -h | yoyo --help     Show features, flags, and keyboard shortcuts.
+  yoyo -v                  Show version.
+
+RUNTIME CONTROLS  (while an agent is running inside yoyo)
+  Press Ctrl+Y, release both keys, then press the next key within 1.5 seconds.
+  Example: Ctrl+Y, then 0 toggles auto-approve; do not hold all three keys.
+
+  Ctrl+Y  0     Toggle auto-approve on/off (0 is NOT a zero-second delay).
+  Ctrl+Y  1-5   Set approval delay to 1-5 seconds and enable auto-approve.
+                For immediate approval, start with: yoyo -delay 0 <command>
+  Ctrl+Y  a     Toggle AFK continuation nudges (off by default).
+                After idle, answer simple continue prompts in Codex/Claude.
+                Independent of auto-approve; existing drafts are left alone.
+  Ctrl+Y  f     Toggle fuzzy fallback (off by default): detect generic y/n
+                prompts after the screen has stayed stable.
+  Ctrl+Y  d     Save a diagnostic dump (screen, state, config, log tail,
+                environment) to ~/.yoyo/dumps/ for troubleshooting.
+  Ctrl+Y  q     Force-kill a stuck child agent and exit yoyo.
+  Ctrl-C x3    Same force-kill action when pressed three times within 1 second.
+
+  During an approval countdown, any non-escape key cancels that pending
+  approval and is forwarded to the agent. Use Ctrl+Y 0 to pause auto-approve.
+  Runtime changes last for this yoyo process; they do not edit the config file.
 
 DESCRIPTION
   yoyo wraps any AI agent CLI (claude, codex, cursor, …) in a PTY proxy.
@@ -44,12 +67,15 @@ DESCRIPTION
 
 SUPPORTED AGENTS
   claude        Claude Code CLI  (detects ─── bordered permission prompts)
-  codex         OpenAI Codex CLI (detects "Would you like to" / "needs your approval")
+  codex         OpenAI Codex CLI (approval forms including MCP; retry/wait menus)
   cursor        Cursor agent     (detects box-drawn ┌─┐ prompts with y/n options)
   <any command> Unknown agents are auto-detected from screen content within the
-                first 10 output frames; all built-in detectors run in parallel.
+                first 10 output frames; built-in detectors are tried in order.
 
 FLAGS
+  -h, --help
+        Show this reference and exit. No agent command is needed.
+
   -delay int
         Seconds to wait before auto-approving a detected prompt.
         0 = approve immediately (no countdown).
@@ -98,24 +124,6 @@ FLAGS
         loops, scripted cleanup, etc.).
 
   -v    Print version and exit.
-
-RUNTIME CONTROLS  (Ctrl+Y is the prefix key)
-  Ctrl+Y  0     Toggle auto-approve on/off
-  Ctrl+Y  1     Set delay to 1 second  (enables if currently off)
-  Ctrl+Y  2     Set delay to 2 seconds (enables if currently off)
-  Ctrl+Y  3     Set delay to 3 seconds (enables if currently off)
-  Ctrl+Y  4     Set delay to 4 seconds (enables if currently off)
-  Ctrl+Y  5     Set delay to 5 seconds (enables if currently off)
-  Ctrl+Y  a     Toggle AFK mode on/off (independent of auto-approve)
-  Ctrl+Y  f     Toggle fuzzy fallback on/off
-  Ctrl+Y  q     Force-kill the child process (escape hatch for wedged
-                agents). Also triggered by 3x Ctrl-C within 500 ms.
-  Ctrl+Y  d     Write a diagnostic dump to ~/.yoyo/dumps/ capturing the
-                current screen, state, config, log tail, and env. Share
-                with maintainers to reproduce bugs.
-
-  Pressing any non-escape key while the countdown is running cancels
-  the pending approval, letting you inspect or respond manually.
 
 CONFIG FILE  (~/.config/yoyo/config.toml)
   [defaults]

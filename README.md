@@ -222,6 +222,7 @@ yoyo [flags] <command> [args...]
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `-h`, `--help` | | Show features, flags, and keyboard shortcuts, then exit. No agent command is needed. |
 | `-delay int` | `1` (from config) | Seconds to wait before auto-approving. `0` = approve immediately. `-1` = use config value. Explicit flag always takes priority over per-agent config. |
 | `-config string` | `~/.config/yoyo/config.toml` | Path to TOML config file. Supports `~/`. |
 | `-log string` | `~/.yoyo/yoyo.log` | Path to log file. Supports `~/`. |
@@ -232,7 +233,7 @@ Run `yoyo -h` for the full built-in reference.
 
 ### Runtime Controls
 
-The prefix key is **Ctrl+Y**. Press Ctrl+Y, then:
+The prefix key is **Ctrl+Y**. Press it, release both keys, then press the next key within **1.5 seconds**:
 
 | Key | Action |
 |-----|--------|
@@ -242,6 +243,8 @@ The prefix key is **Ctrl+Y**. Press Ctrl+Y, then:
 | `f` | Toggle fuzzy fallback on/off |
 | `q` | Force-kill the child process (escape hatch for wedged agents) |
 | `d` | Write a diagnostic dump to `~/.yoyo/dumps/` (see [Diagnostic dumps](#diagnostic-dumps)) |
+
+`Ctrl+Y 0` toggles auto-approve; it does not set a zero-second delay. For immediate approval, start with `yoyo -delay 0 <command>`. Runtime changes last for the current yoyo process and do not edit the config file.
 
 **Cancel pending approval:** press any non-escape key while the countdown is running.
 
