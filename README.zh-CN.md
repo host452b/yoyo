@@ -163,7 +163,7 @@ yoyo 自带**三个内置 detector**覆盖最常见的 AI agent CLI；超出这�
 | [OpenAI Codex CLI](https://github.com/openai/codex) | `codex` | 审批标题 + 完整编号的批准/拒绝选项 + 唯一选择标记 + 确认/取消页脚；支持命令、网络、终端输入、文件编辑、权限和 MCP 审批 |
 | [Cursor Agent](https://cursor.com/agents) | `cursor`、`cursor-agent`、`agent` | `┌─┐` 画框 + `(y)` / `n)` 选项（兼容老式"全部在框内"和新式"命令在框内、选项在框外下方"两种布局）。裸 `agent` 没写进命令级识别（太通用，会和 `ssh-agent` 等冲突）——yoyo 会在前 10 帧输出里根据 Cursor 的 banner 自动识别。 |
 
-Codex 审批选择已识别的单次批准选项：该项已选中且页脚注明 Enter 确认时发送 Enter，否则使用该选项显示的单字母快捷键。支持菜单文本换行；不完整菜单、普通问题、无法识别或有歧义的选项等待手动输入。自定义 regex 规则及可选 fuzzy/AFK 兜底仍按各自规则工作。
+Codex 审批选择已识别的单次批准选项：该项已选中且页脚注明 Enter 确认时发送 Enter，否则使用该选项显示的单字母快捷键。带有 `Field 1/1` 和 `Allow` / `Cancel` 选项的 MCP 工具授权表单，无论高亮在哪一项，都发送 `1` 批准本次调用，不追加 Enter。支持菜单文本换行；不完整菜单、普通问题、无法识别或有歧义的选项等待手动输入。自定义 regex 规则及可选 fuzzy/AFK 兜底仍按各自规则工作。
 
 `yoyo claude` / `yoyo codex` / `yoyo cursor` 会自动根据命令名选 detector。如果你是经包装脚本启动（或命令名不匹配），yoyo 会在前 10 帧输出里根据 banner 文本自动识别——所以 `yoyo my-claude-wrapper.sh` 也能跑。
 

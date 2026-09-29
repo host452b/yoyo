@@ -317,6 +317,41 @@ func TestProxy_E2E_CodexWaitMenu(t *testing.T) {
 	}
 }
 
+func TestProxy_E2E_CodexMCPToolApproval(t *testing.T) {
+	data, err := os.ReadFile("../detector/testdata/codex/mcp/tool-approval.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prompt := strings.ReplaceAll(string(data), "\n", "\r\n")
+	body, footer, _ := strings.Cut(prompt, "  enter to submit")
+	pr, _, pty, stdin := makeProxy(t, agent.KindCodex, 0, true, nil)
+	done := runProxy(pr)
+	defer func() { pty.close(); stdin.close(); <-done }()
+	pty.send(body + "  enter to submit | esc to can")
+	ensureNotWritten(t, pty, "1", 100*time.Millisecond)
+	pty.send("cel")
+	waitWritten(t, pty, "1", time.Second)
+
+	// Committing the answer clears the progress suffix and moves the cursor.
+	// Keep duplicate suppression through this redraw and a partial footer.
+	moved := strings.ReplaceAll(body, " (1 required unanswered)", "")
+	moved = strings.ReplaceAll(strings.ReplaceAll(moved, "› 3.", "  3."), "    1.", "  › 1.")
+	pty.send("\x1b[2J\x1b[H" + moved + "  enter to submit | esc to can")
+	time.Sleep(100 * time.Millisecond)
+	pty.send("cel")
+	time.Sleep(100 * time.Millisecond)
+	if got := pty.written(); got != "1" {
+		t.Fatalf("MCP redraw produced extra keystrokes: %q", got)
+	}
+
+	pty.send("\x1b[2J\x1b[HWorking...")
+	pty.send("\x1b[2J\x1b[H" + body + "  enter to submit" + footer)
+	waitWritten(t, pty, "11", time.Second)
+	if got := pty.written(); got != "11" {
+		t.Fatalf("reappearing MCP approval response: %q", got)
+	}
+}
+
 func TestProxy_E2E_CodexReappearance(t *testing.T) {
 	pr, _, pty, stdin := makeProxy(t, agent.KindCodex, 0, true, nil)
 	done := runProxy(pr)

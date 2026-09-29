@@ -176,7 +176,9 @@ more general fallbacks you can layer on.
 
 Codex approvals choose the recognized single-request option. yoyo sends Enter
 when that option is selected and the footer advertises Enter; otherwise it uses
-the option's displayed plain letter shortcut. Wrapped menu text is supported.
+the option's displayed plain letter shortcut. MCP tool approval forms with
+`Field 1/1` and `Allow` / `Cancel` choices use `1` to approve that call, regardless
+of the highlighted option, without an extra Enter. Wrapped menu text is supported.
 Incomplete menus, ordinary questions, and unsupported or ambiguous choices wait
 for manual input. Custom regex rules and opt-in fuzzy/AFK fallbacks have their
 own matching behavior.

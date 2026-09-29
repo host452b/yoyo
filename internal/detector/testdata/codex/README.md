@@ -19,6 +19,15 @@ at the same commit; `wait.txt` covers the user-reported menu without that footer
 Both forms send only the numeric shortcut `1`, without Enter, and share the same
 menu identity so footer updates do not trigger another response.
 
+The user-reported MCP tool approval under `mcp/tool-approval.txt` covers the
+single-field `Allow` / optional session and persistent grants / `Cancel` form.
+Rendering and input behavior were checked in
+`bottom_pane/mcp_server_elicitation.rs` at the same local Codex commit.
+The numeric shortcut `1` selects and submits the single-call `Allow` option,
+even when `Always allow` is highlighted; no Enter is appended. The request
+title and arguments provide stable visibility evidence while field progress,
+selection and footer redraw after submission.
+
 The upstream Apache-2.0 license is included in [LICENSE](LICENSE).
 
 | Fixture | Upstream source under `codex-rs/tui/src/` |
