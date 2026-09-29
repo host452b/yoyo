@@ -133,7 +133,7 @@ func TestResolveEffective_ClampsNonPositiveDurations(t *testing.T) {
 		AfkIdle:     durp(0),
 		FuzzyStable: durp(0),
 	})
-	if got.AfkIdle != 10*time.Minute {
+	if got.AfkIdle != 180*time.Second {
 		t.Errorf("AfkIdle not clamped: got %v", got.AfkIdle)
 	}
 	if got.FuzzyStable != 3*time.Second {

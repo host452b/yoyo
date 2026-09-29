@@ -4,6 +4,38 @@ All notable changes to yoyo are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] — 2026-09-30
+
+### Added
+
+- In opt-in AFK mode, send Enter once to confirm the current highlighted item
+  in recognized Codex/Claude menus and Codex single-field select forms after
+  the idle interval. This accepts the selected item, including Cancel or a
+  session/persistent grant; it does not change the selection.
+
+### Changed
+
+- Reduce the default AFK inactivity interval from 10 minutes to 180 seconds.
+  Explicit command-line and configuration overrides continue to take priority.
+- Refresh the status bar's remaining seconds every second even when the agent
+  is silent. Keyboard input and child output reset the interval; status-bar
+  repaints do not.
+- Bring keyboard shortcuts to the top of `yoyo -h` / `yoyo --help`, explaining
+  prefix timing, each action, and the independent AFK and auto-approve switches.
+
+### Fixed
+
+- Reset AFK inactivity when a yoyo keyboard shortcut consumes the input.
+- Clear the old status label when the countdown shrinks, and defer timer-only
+  repaints while a terminal escape or UTF-8 sequence is incomplete.
+
+### Tests
+
+- Cover default timing, silent countdown refreshes, default Enter, successive
+  menus, and suppression after normal auto-approval or a previous AFK attempt.
+- Cover AFK-off, dry-run, deletion-command safety, incomplete/ambiguous menus,
+  multi-field forms, existing drafts, and status-bar redraws.
+
 ## [2.6.1] — 2026-09-17
 
 ### Fixed

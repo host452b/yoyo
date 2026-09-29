@@ -330,8 +330,35 @@ func (p *Proxy) Run() error {
 		atomic.AddInt64(&p.approvalCount, 1)
 	}
 
+	refreshCountdowns := func() {
+		remaining := func(deadline time.Time) int {
+			secs := int(time.Until(deadline).Seconds() + 0.5)
+			if secs < 0 {
+				return 0
+			}
+			return secs
+		}
+		if approvalTimer != nil {
+			cfg.StatusBar.SetCountdown(remaining(approvalDeadline))
+		}
+		cfg.StatusBar.SetAfk(afkEnabled, remaining(afkDeadline), time.Now().Before(afkNudgedUntil))
+	}
+	// Refresh independently of PTY output. Painting the overlay is not agent
+	// activity and must never postpone the AFK inactivity deadline.
+	statusTicker := time.NewTicker(time.Second)
+	defer statusTicker.Stop()
+	refreshCountdowns()
+	if afkEnabled {
+		stdout.Write(cfg.StatusBar.WrapFrame(nil))
+	}
+
 	for {
 		select {
+		case <-statusTicker.C:
+			if afkEnabled || approvalTimer != nil {
+				refreshCountdowns()
+				stdout.Write(cfg.StatusBar.WrapFrame(nil))
+			}
 		case data, ok := <-inputCh:
 			if !ok {
 				if approvalTimer != nil {
@@ -351,6 +378,10 @@ func (p *Proxy) Run() error {
 				if cfg.Log != nil {
 					cfg.Log.Infof("afk: submission cancelled by user input")
 				}
+			}
+			if afkIdleTimer != nil {
+				afkIdleTimer.Reset(cfg.AfkIdle)
+				afkDeadline = time.Now().Add(cfg.AfkIdle)
 			}
 			// Kitty keyboard protocol: terminals such as Ghostty encode
 			// Ctrl+Y as "\x1b[121;5u" (not the legacy 0x19 byte) once the
@@ -462,6 +493,7 @@ func (p *Proxy) Run() error {
 						cfg.Log.Errorf("dump: no callback configured")
 					}
 				}
+				refreshCountdowns()
 				stdout.Write(cfg.StatusBar.WrapFrame([]byte{}))
 				if len(data) == 0 {
 					continue
@@ -484,11 +516,6 @@ func (p *Proxy) Run() error {
 				approvalTimer = nil
 				timerCh = nil
 				cfg.StatusBar.SetCountdown(-1)
-			}
-
-			if afkIdleTimer != nil {
-				afkIdleTimer.Reset(cfg.AfkIdle)
-				afkDeadline = time.Now().Add(cfg.AfkIdle)
 			}
 
 			cfg.PTY.Write(data)
@@ -580,25 +607,7 @@ func (p *Proxy) Run() error {
 				}
 			}
 
-			// Update countdown display
-			if approvalTimer != nil {
-				remaining := int(time.Until(approvalDeadline).Seconds() + 0.5)
-				if remaining < 0 {
-					remaining = 0
-				}
-				cfg.StatusBar.SetCountdown(remaining)
-			}
-
-			if afkEnabled && !afkDeadline.IsZero() {
-				remaining := int(time.Until(afkDeadline).Seconds() + 0.5)
-				if remaining < 0 {
-					remaining = 0
-				}
-				nudged := time.Now().Before(afkNudgedUntil)
-				cfg.StatusBar.SetAfk(true, remaining, nudged)
-			} else {
-				cfg.StatusBar.SetAfk(false, 0, false)
-			}
+			refreshCountdowns()
 
 			out := cfg.StatusBar.WrapFrame(data)
 			stdout.Write(out)
@@ -642,8 +651,13 @@ func (p *Proxy) Run() error {
 			afkIdleTimer = nil
 			view := cfg.Screen.Snapshot()
 			question := agentKind.AFKContinuation(view, "")
+			menu := agentKind.AFKDefaultEnter(view)
+			if menu != nil {
+				question = "menu:" + menu.Hash
+			}
 			if !afkEnabled || prefixActive || approvalTimer != nil || len(inputCh) > 0 || len(outputCh) > 0 ||
-				question == "" || afkAttempted[question] || chain.Detect(view.Text) != nil {
+				question == "" || afkAttempted[question] || (menu == nil && chain.Detect(view.Text) != nil) ||
+				(menu != nil && menu.Hash == approvedHash) {
 				if cfg.Log != nil {
 					cfg.Log.Infof("afk: skipped; no new eligible continuation question")
 				}
@@ -663,6 +677,25 @@ func (p *Proxy) Run() error {
 			// Record attempts, including failed writes, so missing acknowledgments
 			// never produce repeated text in an unchanged input box.
 			afkAttempted[question] = true
+			if menu != nil {
+				if dryRun {
+					if cfg.Log != nil {
+						cfg.Log.Infof("afk: would press Enter for the highlighted %s menu choice", agentKind)
+					}
+				} else if n, err := cfg.PTY.Write([]byte("\r")); err == nil && n == 1 {
+					rememberApproved(menu)
+					afkNudgedUntil = time.Now().Add(2 * time.Second)
+					if cfg.Log != nil {
+						cfg.Log.Infof("afk: pressed Enter for the highlighted %s menu choice", agentKind)
+					}
+				} else if cfg.Log != nil {
+					cfg.Log.Errorf("afk: default Enter failed (%d bytes): %v", n, err)
+				}
+				armAfk()
+				refreshCountdowns()
+				stdout.Write(cfg.StatusBar.WrapFrame(nil))
+				break
+			}
 			if dryRun {
 				if cfg.Log != nil {
 					cfg.Log.Infof("afk: would paste and submit continuation for %s", agentKind)

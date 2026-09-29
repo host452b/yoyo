@@ -79,7 +79,7 @@ sudo mv yoyo /usr/local/bin/
 ### 验证安装
 
 ```bash
-yoyo -v      # 打印已装版本，例如 "yoyo v2.6.1"
+yoyo -v      # 打印已装版本，例如 "yoyo v2.7.0"
 yoyo -h      # 完整用法
 ```
 
@@ -173,9 +173,9 @@ Codex 审批选择已识别的单次批准选项：该项已选中且页脚注�
 
 1. **自定义 regex 规则**（在 `~/.config/yoyo/config.toml` 里写 `[[rules]]`，包含 `pattern` 和 `response`，优先于内置 detector 评估）。适用于 prompt 形状固定但上游没收录的 agent，如 aider、goose、mentat、gemini-cli、devin、OpenHands、sweep 等。详见下面的 [配置文件](#配置文件)。
 2. **Fuzzy 保底**（`-fuzzy`）——窄词表 y/n 检测，屏幕稳定 + 出现 `(y/n)` / `[Y/n]` / `yes/no` 这类明确标记时触发。对任意 agent 只要 prompt 里出现这些标记就能识别，不需要了解 agent 细节。
-3. **AFK 模式**（`-afk`）——终端 `-afk-idle`（默认 10 分钟）无输入输出后，只有识别到 Codex/Claude 的空闲输入框和明确的继续询问，才发送一次继续指令。未知界面、审批、草稿、忙碌状态和已完成的回答会跳过。
+3. **AFK 模式**（`-afk`）——终端 `-afk-idle`（默认 180 秒）无输入输出后，对已识别菜单按 Enter 确认当前高亮项；对 Codex/Claude 空输入框中的明确继续询问，发送一次继续指令。未知界面、草稿、忙碌状态和已完成的回答会跳过。
 
-自定义规则和 fuzzy 可用于其他工具；AFK 当前仅支持已识别的 Codex、Claude 输入界面，不会盲目回答未识别的提示。
+自定义规则和 fuzzy 可用于其他工具；AFK 当前仅支持已识别的 Codex、Claude 菜单和输入界面，不会盲目回答未识别的提示。
 
 ---
 
@@ -236,17 +236,21 @@ yoyo [flags] <command> [args...]
 
 ### AFK 模式
 
-AFK 是默认关闭的继续执行辅助功能。静默达到设定时间后，检查 Codex 或 Claude 是否正通过空闲输入框明确询问要不要继续：
+AFK 是默认关闭的空闲辅助功能，默认静默时间为 **180 秒**。显式命令行参数或配置仍可覆盖该值：
 
 ```
-yoyo -afk -afk-idle 10m claude
+yoyo -afk -afk-idle 180s claude
 ```
 
-触发需要同时满足：设定时间内**既没输出也没输入**、可见光标位于空输入框、存在已识别的快捷键页脚、最后一条助手消息以简单继续询问结尾，例如 `Should I continue?` 或 `需要我继续吗？`。审批菜单、选择题、忙碌状态、已有草稿、引用/代码示例、已完成的回答及未知界面会跳过；自定义状态栏、改绑按键或其他问法可能需要人工处理。
+状态栏显示 `afk 180s`、`afk 179s` 等剩余秒数，即使 agent 没有输出也每秒刷新。键盘输入（包括 yoyo 快捷键）或 agent 输出会重新计时；状态栏自身刷新不会重置静默时间。
+
+到期时，若识别到完整菜单且只有一个高亮项，就发送一次 Enter。支持内置 Codex/Claude 审批菜单、Codex 重试/等待菜单和 Codex 单字段选择表单。Enter 确认的就是当前高亮项，包括 Cancel、会话授权或永久授权。已被普通自动批准处理过的提示会跳过。
+
+聊天续写仍要求可见光标位于空输入框、存在已识别的快捷键页脚，且最后一条助手消息以简单继续询问结尾，例如 `Should I continue?` 或 `需要我继续吗？`。未知或不完整菜单、多字段表单、忙碌状态、已有草稿及已完成的回答会跳过；自定义布局或改绑按键可能需要人工处理。
 
 yoyo 先通过 bracketed paste 填入 `Continue the current task within the existing instructions.`，确认同一输入框回显了完整文本，且至少 300 毫秒没有输出后，再单独按 Enter。期间有人工输入、关闭 AFK、界面改变、命中删除命令防护、写入失败，或 2 秒内未确认回显，就取消提交。已填入的草稿留给用户检查，不会自动删除。
 
-同一助手问题的哈希在每个会话中最多尝试一次，失败也不重复发送；问题或上下文变化后可再次触发。AFK 与自动批准开关独立，遵守 `-dry-run`，运行时用 `Ctrl+Y a` 切换。
+同一菜单或问题的哈希在每个 yoyo 进程中最多尝试一次，失败也不重复发送；请求或上下文变化后可再次触发。AFK 遵守 `-dry-run` 和删除命令防护，运行时用 `Ctrl+Y a` 切换。两个开关独立：`Ctrl+Y 0` 关闭自动批准后，AFK 仍可能开启。
 
 Codex 布局依据本地上游源码；Claude 空闲布局使用构造测试覆盖。目前不代表所有已安装 CLI 版本都已实测，也无法据此直接得知 agent 内部的执行状态。
 
@@ -289,7 +293,7 @@ Fuzzy 命中后走标准 approval 流程，所以 `-delay` 和 memory 去重照�
 delay        = 1              # 批准延迟秒数（0 = 立即）
 enabled      = true           # 启动时就开自动批准
 afk          = false          # 启用 AFK 空闲戳
-afk_idle     = "10m"          # AFK idle 阈值
+afk_idle     = "180s"          # AFK idle 阈值
 fuzzy        = false           # 启用通用 fuzzy 保底
 fuzzy_stable = "3s"            # fuzzy 触发前屏幕稳定窗口
 log_file     = "~/.yoyo/yoyo.log"

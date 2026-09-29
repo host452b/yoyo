@@ -94,7 +94,7 @@ func resolveEffective(cfg *config.Config, kind agent.Kind, f cliFlags) effective
 	}
 
 	if s.AfkIdle <= 0 {
-		s.AfkIdle = 10 * time.Minute
+		s.AfkIdle = config.DefaultAfkIdle
 	}
 	if s.FuzzyStable <= 0 {
 		s.FuzzyStable = 3 * time.Second

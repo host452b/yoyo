@@ -12,6 +12,9 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
+// DefaultAfkIdle is the inactivity interval used when no override is configured.
+const DefaultAfkIdle = 180 * time.Second
+
 // Duration is a TOML-serialisable wrapper around time.Duration that parses
 // strings like "10m" / "1h30m" via UnmarshalText.
 type Duration time.Duration
@@ -77,6 +80,7 @@ func load(path string, required bool) (*Config, error) {
 	cfg := &Config{}
 	cfg.Defaults.Delay = 1
 	cfg.Defaults.Enabled = true
+	cfg.Defaults.AfkIdle = DefaultAfkIdle
 	cfg.Defaults.LogFile = ExpandTilde("~/.yoyo/yoyo.log")
 
 	data, err := os.ReadFile(path)
@@ -102,9 +106,9 @@ func load(path string, required bool) (*Config, error) {
 	// Apply tilde expansion to paths
 	cfg.Defaults.LogFile = ExpandTilde(cfg.Defaults.LogFile)
 
-	// afk_idle: default 10 minutes when unset; negative is invalid.
+	// afk_idle: default 180 seconds when unset; negative is invalid.
 	if cfg.Defaults.AfkIdleRaw == 0 {
-		cfg.Defaults.AfkIdle = 10 * time.Minute
+		cfg.Defaults.AfkIdle = DefaultAfkIdle
 	} else {
 		cfg.Defaults.AfkIdle = time.Duration(cfg.Defaults.AfkIdleRaw)
 	}

@@ -40,8 +40,9 @@ RUNTIME CONTROLS  (while an agent is running inside yoyo)
   Ctrl+Y  0     Toggle auto-approve on/off (0 is NOT a zero-second delay).
   Ctrl+Y  1-5   Set approval delay to 1-5 seconds and enable auto-approve.
                 For immediate approval, start with: yoyo -delay 0 <command>
-  Ctrl+Y  a     Toggle AFK continuation nudges (off by default).
-                After idle, answer simple continue prompts in Codex/Claude.
+  Ctrl+Y  a     Toggle AFK (off by default; 180 seconds of inactivity).
+                Confirm recognized menus with Enter on the highlighted item,
+                or answer simple continue prompts in Codex/Claude.
                 Independent of auto-approve; existing drafts are left alone.
   Ctrl+Y  f     Toggle fuzzy fallback (off by default): detect generic y/n
                 prompts after the screen has stayed stable.
@@ -67,7 +68,8 @@ DESCRIPTION
 
 SUPPORTED AGENTS
   claude        Claude Code CLI  (detects ─── bordered permission prompts)
-  codex         OpenAI Codex CLI (approval forms including MCP; retry/wait menus)
+  codex         OpenAI Codex CLI (approval and retry/wait menus;
+                AFK also supports single-field select forms)
   cursor        Cursor agent     (detects box-drawn ┌─┐ prompts with y/n options)
   <any command> Unknown agents are auto-detected from screen content within the
                 first 10 output frames; built-in detectors are tried in order.
@@ -93,15 +95,18 @@ FLAGS
         The status bar shows "dry" instead of "on". Useful for testing rules.
 
   -afk
-        After afk-idle without output or input, check for a recognized
-        Codex/Claude empty composer and a simple continuation question.
-        Paste one continuation message; submit only after verified draft
-        echo. Skip unknown/busy/approval screens and existing drafts.
-        User input or missing echo cancels submission. Each question is
-        attempted once per session. Toggle with Ctrl+Y a.
+        After afk-idle without output or input, press Enter on the highlighted
+        choice in a recognized Codex/Claude menu, including Codex single-field
+        select forms. This confirms the current item, even Cancel/Always allow.
+        For a simple continue question in an empty chat composer, paste a
+        continuation message and submit only after verified draft echo.
+        Skip unknown/busy screens and existing drafts. Each menu/question is
+        attempted once per process; dry-run and deletion safety still apply.
+        The status bar refreshes remaining seconds even without agent output.
+        Toggle with Ctrl+Y a; Ctrl+Y 0 controls auto-approve separately.
 
   -afk-idle duration
-        Idle threshold before AFK fires (default 10m). Accepts Go duration
+        Idle threshold before AFK fires (default 180s). Accepts Go duration
         strings like "30m", "1h", "90s".
 
   -fuzzy
@@ -130,7 +135,7 @@ CONFIG FILE  (~/.config/yoyo/config.toml)
   delay    = 1       # default approval delay in seconds
   enabled  = true    # start with auto-approve on
   afk      = false   # enable AFK idle-nudge mode
-  afk_idle = "10m"   # idle threshold before nudging
+  afk_idle = "180s"  # idle threshold before nudging
   fuzzy        = false   # enable generic fuzzy fallback
   fuzzy_stable = "3s"    # screen-stable window before fuzzy attempts match
   log_file = "~/.yoyo/yoyo.log"
@@ -188,7 +193,7 @@ func main() {
 		showVer     = flag.Bool("v", false, "print version and exit")
 		dryRun      = flag.Bool("dry-run", false, "detect prompts but do not send approvals")
 		afk         = flag.Bool("afk", false, "enable AFK mode (idle-timer nudges)")
-		afkIdle     = flag.Duration("afk-idle", 10*time.Minute, "AFK idle threshold")
+		afkIdle     = flag.Duration("afk-idle", config.DefaultAfkIdle, "AFK idle threshold")
 		fuzzy       = flag.Bool("fuzzy", false, "enable generic fuzzy fallback detector")
 		fuzzyStable = flag.Duration("fuzzy-stable", 3*time.Second, "screen-stable window before fuzzy attempts vocabulary match")
 		noSafety    = flag.Bool("no-safety", false, "disable the deletion-command safety guard (default: guard enabled)")

@@ -150,16 +150,17 @@ func TestLoadRequired_ExistingFile_Works(t *testing.T) {
 }
 
 func TestLoad_AfkDefaultsOff(t *testing.T) {
-	path := writeConfig(t, "")
-	cfg, err := config.Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Defaults.Afk {
-		t.Error("default afk = true, want false")
-	}
-	if cfg.Defaults.AfkIdle != 10*time.Minute {
-		t.Errorf("default afk_idle = %v, want 10m", cfg.Defaults.AfkIdle)
+	for _, path := range []string{writeConfig(t, ""), filepath.Join(t.TempDir(), "missing.toml")} {
+		cfg, err := config.Load(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Defaults.Afk {
+			t.Error("default afk = true, want false")
+		}
+		if cfg.Defaults.AfkIdle != 180*time.Second {
+			t.Errorf("default afk_idle = %v, want 180s (%s)", cfg.Defaults.AfkIdle, path)
+		}
 	}
 }
 
