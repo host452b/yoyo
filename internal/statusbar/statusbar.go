@@ -26,21 +26,22 @@ const minLabelWidth = 22 // " [yoyo: on Xs | ...]  " minimum
 // StatusBar renders a bottom-right ANSI overlay around PTY output frames.
 // All methods are goroutine-safe (SIGWINCH resize races with event loop writes).
 type StatusBar struct {
-	mu         sync.Mutex
-	rows       uint16
-	cols       uint16
-	enabled    bool
-	delaySecs  int
-	countdown  int // remaining seconds; -1 = no active countdown
-	rule       string
-	painted    bool
-	midSeq     bool
-	prefix     bool // true while waiting for Ctrl+Y command byte
-	dryRun     bool
-	afkEnabled bool
-	afkRemain  int // seconds remaining
-	afkNudged  bool
-	buf        []byte // reusable output buffer
+	mu           sync.Mutex
+	rows         uint16
+	cols         uint16
+	enabled      bool
+	delaySecs    int
+	countdown    int // remaining seconds; -1 = no active countdown
+	rule         string
+	painted      bool
+	paintedWidth uint16
+	midSeq       bool
+	prefix       bool // true while waiting for Ctrl+Y command byte
+	dryRun       bool
+	afkEnabled   bool
+	afkRemain    int // seconds remaining
+	afkNudged    bool
+	buf          []byte // reusable output buffer
 }
 
 // New creates a StatusBar. enabled=true means auto-approve is active.
@@ -82,7 +83,7 @@ func (sb *StatusBar) SetCountdown(secs int) {
 }
 
 // SetAfk updates the AFK segment. When enabled=false no segment is rendered.
-// nudgedFlash=true shows "afk nudged" instead of the mm:ss countdown.
+// nudgedFlash=true shows "afk nudged" instead of the remaining seconds.
 func (sb *StatusBar) SetAfk(enabled bool, remainingSecs int, nudgedFlash bool) {
 	sb.mu.Lock()
 	sb.afkEnabled = enabled
@@ -118,6 +119,11 @@ func (sb *StatusBar) Resize(rows, cols uint16) {
 func (sb *StatusBar) WrapFrame(frame []byte) []byte {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
+	// Timer-only repaints must wait for the child to finish an escape or
+	// UTF-8 sequence; inserting an overlay here would corrupt that sequence.
+	if len(frame) == 0 && sb.midSeq {
+		return nil
+	}
 	prevMid := sb.midSeq
 	sb.midSeq = endsMidEscape(frame) || endsMidUTF8(frame)
 
@@ -132,11 +138,15 @@ func (sb *StatusBar) WrapFrame(frame []byte) []byte {
 	var clear []byte
 	if sb.painted && !prevMid {
 		sb.painted = false
-		blank := make([]byte, lw)
+		clearWidth := sb.paintedWidth
+		if clearWidth >= sb.cols {
+			clearWidth = sb.cols - 1
+		}
+		blank := make([]byte, clearWidth)
 		for i := range blank {
 			blank[i] = ' '
 		}
-		clear = overlayAt(sb.rows, col, "", string(blank))
+		clear = overlayAt(sb.rows, sb.cols-clearWidth, "", string(blank))
 	} else if prevMid {
 		sb.painted = false
 	}
@@ -144,6 +154,7 @@ func (sb *StatusBar) WrapFrame(frame []byte) []byte {
 	var paint []byte
 	if !sb.midSeq {
 		sb.painted = true
+		sb.paintedWidth = lw
 		color := sb.labelColor()
 		paint = overlayAt(sb.rows, col, color, label)
 	}
@@ -212,9 +223,7 @@ func (sb *StatusBar) afkSuffix() string {
 	if sb.afkNudged {
 		return " | afk nudged"
 	}
-	m := sb.afkRemain / 60
-	s := sb.afkRemain % 60
-	return fmt.Sprintf(" | afk %d:%02d", m, s)
+	return fmt.Sprintf(" | afk %ds", sb.afkRemain)
 }
 
 func overlayAt(row, col uint16, color, text string) []byte {

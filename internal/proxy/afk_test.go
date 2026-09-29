@@ -20,7 +20,6 @@ func TestProxy_AfkSkipsNonContinuationStates(t *testing.T) {
 			"draft":             afkTestScreen(kind, "Should I continue?", "my draft"),
 			"busy":              afkTestScreen(kind, "Should I continue?\r\nesc to interrupt", ""),
 			"business question": afkTestScreen(kind, "Which database should I use?", ""),
-			"approval":          codexPrompt,
 		}
 		if kind == agent.KindUnknown {
 			frames["unidentified composer"] = afkTestScreen(agent.KindClaude, "Should I continue?", "")
@@ -42,6 +41,99 @@ func TestProxy_AfkSkipsNonContinuationStates(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+const afkDefaultMenu = "Field 1/1 (1 required unanswered)\r\n" +
+	"Allow the maas-jira MCP server to run tool \"jira_get_issue\"?\r\n\r\n" +
+	"  1. Allow                   Run the tool and continue.\r\n" +
+	"  2. Allow for this session  Run the tool and remember this choice for this session.\r\n" +
+	"› 3. Always allow            Run the tool and remember this choice for future tool calls.\r\n" +
+	"  4. Cancel                  Cancel this tool call\r\n" +
+	"enter to submit | esc to cancel\r\n"
+
+func TestProxy_AfkDefaultEnter(t *testing.T) {
+	for _, tc := range []struct {
+		name, prompt string
+		kind         agent.Kind
+	}{
+		{"codex approval", strings.ReplaceAll(strings.ReplaceAll(codexPrompt, "› 1.", "  1."), "  2.", "› 2."), agent.KindCodex},
+		{"codex form", afkDefaultMenu, agent.KindCodex},
+		{"claude approval", "──────────────\r\nRead /etc/hosts\r\n  1. Yes\r\n❯ 2. No\r\nEsc to cancel\r\n", agent.KindClaude},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pr, pty, stdin := makeProxyWithAfkConfig(t, 150*time.Millisecond, false, tc.kind, func(cfg *proxy.Config) {
+				cfg.Enabled = false // AFK has its own opt-in switch.
+			})
+			done := runProxy(pr)
+			defer func() { pty.close(); stdin.close(); <-done }()
+			pty.send(tc.prompt)
+			ensureNotWritten(t, pty, "\r", 70*time.Millisecond)
+			waitWritten(t, pty, "\r", time.Second)
+			pty.send("\x1b[2J\x1b[H" + tc.prompt)
+			time.Sleep(350 * time.Millisecond)
+			if got := pty.written(); got != "\r" {
+				t.Fatalf("expected exactly one Enter for the highlighted choice, got %q", got)
+			}
+		})
+	}
+}
+
+func TestProxy_AfkDefaultEnterGuards(t *testing.T) {
+	for _, tc := range []struct {
+		name, prompt     string
+		dryRun, disabled bool
+	}{
+		{"dry run", afkDefaultMenu, true, false},
+		{"AFK off", afkDefaultMenu, false, true},
+		{"no selection", strings.ReplaceAll(afkDefaultMenu, "›", " "), false, false},
+		{"incomplete footer", strings.ReplaceAll(afkDefaultMenu, "esc to cancel", "esc to can"), false, false},
+		{"multiple fields", strings.ReplaceAll(afkDefaultMenu, "Field 1/1", "Field 1/2"), false, false},
+		{"danger", strings.ReplaceAll(afkDefaultMenu, "jira_get_issue", "rm -rf /"), false, false},
+		{"stale menu", afkDefaultMenu + "Working...\r\n", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pr, pty, stdin := makeProxyWithAfkConfig(t, 70*time.Millisecond, tc.dryRun, agent.KindCodex, func(cfg *proxy.Config) {
+				cfg.Enabled = false
+				cfg.AfkEnabled = !tc.disabled
+				cfg.SafetyEnabled = true
+			})
+			done := runProxy(pr)
+			defer func() { pty.close(); stdin.close(); <-done }()
+			pty.send(tc.prompt)
+			time.Sleep(200 * time.Millisecond)
+			if got := pty.written(); got != "" {
+				t.Fatalf("unexpected AFK input: %q", got)
+			}
+		})
+	}
+}
+
+func TestProxy_AfkDoesNotRepeatAutomaticApproval(t *testing.T) {
+	pr, pty, stdin := makeProxyWithAfk(t, 70*time.Millisecond, false, agent.KindCodex)
+	done := runProxy(pr)
+	defer func() { pty.close(); stdin.close(); <-done }()
+	prompt := strings.ReplaceAll(strings.ReplaceAll(codexPrompt, "› 1.", "  1."), "  2.", "› 2.")
+	pty.send(prompt)
+	waitWritten(t, pty, "y", time.Second)
+	time.Sleep(250 * time.Millisecond)
+	if got := pty.written(); got != "y" {
+		t.Fatalf("AFK confirmed an already handled approval: %q", got)
+	}
+}
+
+func TestProxy_AfkDefaultEnterAdvancesToNextMenu(t *testing.T) {
+	pr, pty, stdin := makeProxyWithAfkConfig(t, 70*time.Millisecond, false, agent.KindCodex, func(cfg *proxy.Config) {
+		cfg.Enabled = false
+	})
+	done := runProxy(pr)
+	defer func() { pty.close(); stdin.close(); <-done }()
+	for i, tool := range []string{"jira_get_issue", "jira_get_comments"} {
+		pty.send("\x1b[2J\x1b[H" + strings.ReplaceAll(afkDefaultMenu, "jira_get_issue", tool))
+		waitWritten(t, pty, strings.Repeat("\r", i+1), time.Second)
+	}
+	if got := pty.written(); got != "\r\r" {
+		t.Fatalf("wrong input across two menus: %q", got)
 	}
 }
 
@@ -154,4 +246,35 @@ func TestProxy_AfkPendingPasteCannotBeSubmittedByFuzzy(t *testing.T) {
 	if got := pty.written(); got != afkTestPaste+"\r" {
 		t.Fatalf("duplicate submission: %q", got)
 	}
+}
+
+func TestProxy_AfkCountdownRefreshesWithoutOutput(t *testing.T) {
+	output := newFakePTY() // Synchronized writer also captures status-bar output.
+	pr, pty, stdin := makeProxyWithAfkConfig(t, 3*time.Second, false, agent.KindCodex, func(cfg *proxy.Config) {
+		cfg.Stdout = output
+	})
+	done := runProxy(pr)
+	defer func() { pty.close(); stdin.close(); <-done }()
+	pty.send(afkTestScreen(agent.KindCodex, "Should I continue?", ""))
+	waitWritten(t, output, "afk 3s", 500*time.Millisecond)
+	waitWritten(t, output, "afk 2s", 1500*time.Millisecond)
+	waitWritten(t, output, "afk 1s", 1500*time.Millisecond)
+	// Status-only repaints must not reset the actual inactivity deadline.
+	waitWritten(t, pty, afkTestPaste, 1500*time.Millisecond)
+	pty.send(afkTestScreen(agent.KindCodex, "Should I continue?", afkTestMessage))
+	waitWritten(t, pty, afkTestPaste+"\r", time.Second)
+	if got := pty.written(); got != afkTestPaste+"\r" {
+		t.Fatalf("countdown did not submit exactly once: %q", got)
+	}
+}
+
+func TestProxy_AfkPrefixCommandResetsIdle(t *testing.T) {
+	pr, pty, stdin := makeProxyWithAfk(t, 600*time.Millisecond, false, agent.KindCodex)
+	done := runProxy(pr)
+	defer func() { pty.close(); stdin.close(); <-done }()
+	pty.send(afkTestScreen(agent.KindCodex, "Should I continue?", ""))
+	time.Sleep(350 * time.Millisecond)
+	stdin.send("\x19f")
+	ensureNotWritten(t, pty, afkTestPaste, 400*time.Millisecond)
+	waitWritten(t, pty, afkTestPaste, time.Second)
 }

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/host452b/yoyo/internal/screen"
 	"github.com/host452b/yoyo/internal/statusbar"
 )
 
@@ -199,12 +200,42 @@ func TestStatusBar_AfkOff_NoSegment(t *testing.T) {
 	}
 }
 
-func TestStatusBar_AfkCountdown_MMSS(t *testing.T) {
+func TestStatusBar_AfkCountdown_Seconds(t *testing.T) {
 	sb := statusbar.New(24, 80, true, 3)
-	sb.SetAfk(true, 7*60+23, false) // 7:23 remaining
+	sb.SetAfk(true, 180, false)
 	out := string(sb.WrapFrame([]byte("x")))
-	if !strings.Contains(out, "afk 7:23") {
-		t.Errorf("expected 'afk 7:23' in label, got %q", out)
+	if !strings.Contains(out, "afk 180s") {
+		t.Errorf("expected 'afk 180s' in label, got %q", out)
+	}
+}
+
+func TestStatusBar_IdleRefreshWaitsForPartialSequence(t *testing.T) {
+	for _, partial := range []string{"\x1b[", "\xe2\x80"} {
+		sb := statusbar.New(24, 80, true, 3)
+		sb.WrapFrame([]byte(partial))
+		sb.SetAfk(true, 179, false)
+		if got := sb.WrapFrame(nil); len(got) != 0 {
+			t.Fatalf("idle refresh interrupted a partial terminal sequence: %q", got)
+		}
+	}
+}
+
+func TestStatusBar_AfkCountdownRepaintErasesOldLabel(t *testing.T) {
+	sb := statusbar.New(24, 80, true, 3)
+	scr := screen.New(80, 24)
+	sb.SetAfk(true, 180, false)
+	scr.Feed(sb.WrapFrame(nil))
+	sb.SetAfk(true, 9, false)
+	scr.Feed(sb.WrapFrame(nil))
+	lines := strings.Split(scr.Text(), "\n")
+	if got := strings.TrimSpace(lines[23]); got != "[yoyo: on 3s | afk 9s]" {
+		t.Fatalf("shorter countdown left stale text: %q", got)
+	}
+	sb.SetAfk(false, 0, false)
+	scr.Feed(sb.WrapFrame(nil))
+	lines = strings.Split(scr.Text(), "\n")
+	if got := strings.TrimSpace(lines[23]); got != "[yoyo: on 3s]" {
+		t.Fatalf("AFK-off left stale countdown: %q", got)
 	}
 }
 

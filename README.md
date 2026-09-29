@@ -88,7 +88,7 @@ sudo mv yoyo /usr/local/bin/
 ### Verify
 
 ```bash
-yoyo -v      # prints the installed version, e.g. "yoyo v2.6.1"
+yoyo -v      # prints the installed version, e.g. "yoyo v2.7.0"
 yoyo -h      # full usage
 ```
 
@@ -203,13 +203,14 @@ handled. Listed from most specific to most generic:
    when the screen is stable and contains an unambiguous marker like `(y/n)`,
    `[Y/n]`, `yes/no`. Works for any agent whose prompt surfaces one of those
    shapes without needing to know anything else about it.
-3. **AFK mode** (`-afk`) — after `-afk-idle` (default 10 min) without input
-   or output, a recognized Codex/Claude empty composer and an explicit
-   continuation-only question can receive one continuation message. Unknown
-   layouts, approvals, drafts, busy screens, and completed answers are skipped.
+3. **AFK mode** (`-afk`) — after `-afk-idle` (default 180s) without input
+   or output, confirm the highlighted choice in a recognized menu with Enter,
+   or send one continuation message for an explicit continue question in an
+   empty Codex/Claude composer. Unknown layouts, drafts, busy screens, and
+   completed answers are skipped.
 
 Custom rules and fuzzy can cover other tools. AFK currently supports only
-recognized Codex and Claude composer layouts; it does not blindly answer
+recognized Codex and Claude menu/composer layouts; it does not blindly answer
 unmatched prompts.
 
 ---
@@ -224,6 +225,7 @@ yoyo [flags] <command> [args...]
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `-h`, `--help` | | Show features, flags, and keyboard shortcuts, then exit. No agent command is needed. |
 | `-delay int` | `1` (from config) | Seconds to wait before auto-approving. `0` = approve immediately. `-1` = use config value. Explicit flag always takes priority over per-agent config. |
 | `-config string` | `~/.config/yoyo/config.toml` | Path to TOML config file. Supports `~/`. |
 | `-log string` | `~/.yoyo/yoyo.log` | Path to log file. Supports `~/`. |
@@ -234,7 +236,7 @@ Run `yoyo -h` for the full built-in reference.
 
 ### Runtime Controls
 
-The prefix key is **Ctrl+Y**. Press Ctrl+Y, then:
+The prefix key is **Ctrl+Y**. Press it, release both keys, then press the next key within **1.5 seconds**:
 
 | Key | Action |
 |-----|--------|
@@ -244,6 +246,8 @@ The prefix key is **Ctrl+Y**. Press Ctrl+Y, then:
 | `f` | Toggle fuzzy fallback on/off |
 | `q` | Force-kill the child process (escape hatch for wedged agents) |
 | `d` | Write a diagnostic dump to `~/.yoyo/dumps/` (see [Diagnostic dumps](#diagnostic-dumps)) |
+
+`Ctrl+Y 0` toggles auto-approve; it does not set a zero-second delay. For immediate approval, start with `yoyo -delay 0 <command>`. Runtime changes last for the current yoyo process and do not edit the config file.
 
 **Cancel pending approval:** press any non-escape key while the countdown is running.
 
@@ -296,20 +300,27 @@ fragments may be in there.
 
 ### AFK mode
 
-AFK is an opt-in continuation helper for supported Codex and Claude layouts.
-After a configured silence, it checks whether the agent is explicitly asking
-to continue in an idle composer:
+AFK is an opt-in idle helper for supported Codex and Claude layouts. Its default
+inactivity interval is **180 seconds**; explicit CLI/config overrides still apply:
 
 ```
-yoyo -afk -afk-idle 10m claude
+yoyo -afk -afk-idle 180s claude
 ```
 
-After the idle window, yoyo requires a visible cursor in an empty composer,
-a recognized shortcuts footer, and the last assistant message ending in a
-simple continuation question such as `Should I continue?` or `需要我继续吗？`.
-It skips approvals, choice dialogs, busy screens, drafts, quoted/code examples,
-completed answers, and unfamiliar layouts. Custom status bars, remapped keys,
-and alternative wording may therefore require manual input.
+The status bar shows remaining seconds (`afk 180s`, `afk 179s`, ...), refreshing
+once per second even when the agent is silent. Keyboard input (including yoyo
+shortcuts) and child output restart the interval; status repaints do not.
+
+At expiry, a complete recognized menu with one highlighted item receives one
+Enter. This covers built-in Codex/Claude approval menus, Codex retry/wait menus,
+and Codex single-field select forms. It confirms the current item, including
+Cancel or a session/persistent grant. Already auto-approved prompts are skipped.
+
+For chat continuation, yoyo instead requires a visible cursor in an empty
+composer, a recognized shortcuts footer, and the last assistant message ending
+in a simple question such as `Should I continue?` or `需要我继续吗？`. Unknown or
+incomplete menus, multi-field forms, busy screens, existing drafts, and completed
+answers are skipped. Custom layouts or remapped keys may require manual input.
 
 It pastes `Continue the current task within the existing instructions.` using
 bracketed paste, then waits for that exact draft to appear in the same composer.
@@ -318,10 +329,11 @@ User input, AFK-off, a changed composer, a deletion-command safety match, a
 write failure, or missing echo within 2 seconds cancels submission. A cancelled
 draft is left visible for the user to inspect; yoyo does not erase it.
 
-Each assistant-question hash is attempted at most once per session, including
-failed attempts. A different question/context can trigger a new attempt.
-AFK remains independent of auto-approve, stays off by default, and respects
-`-dry-run`. Toggle at runtime with `Ctrl+Y a`.
+Each menu/question hash is attempted at most once per yoyo process, including
+failed attempts. A different request/context can trigger a new attempt.
+AFK stays off by default and respects `-dry-run` and the deletion-command guard.
+Toggle it with `Ctrl+Y a`. Its switch is independent: turning auto-approve off
+with `Ctrl+Y 0` does not turn AFK off.
 
 Codex layout checks use local upstream source; Claude idle layouts are covered
 by constructed tests. These checks do not establish compatibility with every
@@ -384,7 +396,7 @@ Default location: `~/.config/yoyo/config.toml`
 delay        = 1              # approval delay in seconds (0 = immediate)
 enabled      = true           # start with auto-approve on
 afk          = false          # enable AFK idle-nudge mode
-afk_idle     = "10m"          # idle threshold before nudging
+afk_idle     = "180s"          # idle threshold before nudging
 fuzzy        = false          # enable generic fuzzy fallback
 fuzzy_stable = "3s"           # screen-stable window before fuzzy attempts match
 log_file     = "~/.yoyo/yoyo.log"
