@@ -1,0 +1,12 @@
+  Field 1/1 (1 required unanswered)
+  Allow the maas-jira MCP server to run tool "jira_get_issue"?
+
+  expand_attachments: true
+  expand_comments: true
+  full_text: true
+
+    1. Allow                   Run the tool and continue.
+    2. Allow for this session  Run the tool and remember this choice for this session.
+  › 3. Always allow            Run the tool and remember this choice for future tool calls.
+    4. Cancel                  Cancel this tool call
+  enter to submit | esc to cancel

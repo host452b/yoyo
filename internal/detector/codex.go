@@ -40,6 +40,9 @@ func (Codex) Detect(screenText string) *MatchResult {
 	if retry := detectCodexRetryMenu(rawLines, lines); retry != nil {
 		return retry
 	}
+	if mcp := detectCodexMCPToolApproval(rawLines, lines); mcp != nil {
+		return mcp
+	}
 
 	// The footer must end the visible content. This rejects historical menus
 	// followed by output, a composer, or a newer partially rendered request.
